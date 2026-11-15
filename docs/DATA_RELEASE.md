@@ -200,9 +200,14 @@ workflow and choose **Run workflow**. It downloads the selected release, restore
 it, runs a separate `--verify-restored` pass, and uploads the JSON report as the
 `restored-tree-verification` artifact. Success and failure reports are retained.
 
-The job uses about 19 GB of temporary disk and can take a while on a cold
-runner, so it is not part of the push/PR workflow. The `tag`, destination,
-rate window and report path are configurable when dispatching it.
+The job caches `release-assets/` using the release tag and committed checksum
+mirror. A later dispatch with the same release restores the parts from cache and
+skips the 5.4 GB download. Parts are downloaded and verified before extraction,
+and the cache is saved immediately after that download. A later extraction or
+report failure therefore does not discard the cached parts. On a cache miss the
+job uses about 19 GB of temporary disk and can take a while on a cold runner, so
+it is not part of the push/PR workflow. The `tag`, destination, rate window and
+report path are configurable when dispatching it.
 
 ## Release audit
 

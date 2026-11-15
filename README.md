@@ -385,8 +385,9 @@ are deterministic fixtures for the report format and failure paths, not a full
 release-tree verification. A separate manual **Verify restored data** workflow
 downloads and restores the published archive, runs `--verify-restored`, and
 uploads the resulting report as the `restored-tree-verification` artifact. It
-is not run on every push because it downloads the full release and needs about
-19 GB of temporary disk. The release
+caches `release-assets/` by release tag and checksum, so later dispatches skip
+the 5.4 GB download. It is not run on every push because a cache miss needs
+about 19 GB of temporary disk. The release
 audit checks the live release's part digests and MANIFEST against
 `data/releases/`; it does not download the large parts. A separate **Scheduled
 release audit** workflow repeats that audit every Monday at 06:17 UTC, and can

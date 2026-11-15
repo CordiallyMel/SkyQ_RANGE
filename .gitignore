@@ -39,6 +39,7 @@ Thumbs.db
 
 # generated release assets (kept outside Git)
 release_assets/
+release-assets/
 *.tar.part-*
 
 # local LSE bridge / forward-test state

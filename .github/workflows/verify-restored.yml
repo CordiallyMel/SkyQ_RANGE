@@ -41,18 +41,42 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Download and restore release
+      - name: Restore cached release parts
+        id: release-cache
+        uses: actions/cache/restore@v4
+        continue-on-error: true
+        with:
+          path: release-assets
+          key: release-parts-v1-${{ inputs.tag }}-${{ hashFiles('data/releases/*.sha256') }}
+      - name: Download and verify release parts
+        id: download-release
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ inputs.tag }}
-          RESTORE_DEST: ${{ inputs.destination }}
-          RATE_WINDOW: ${{ inputs.rate_window }}
         run: |
           set -o pipefail
           python -m scripts.restore_market_data \
             --download \
             --tag "$RELEASE_TAG" \
+            --verify-only
+      - name: Save release parts cache
+        if: steps.download-release.outcome == 'success' && steps.release-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: release-assets
+          key: ${{ steps.release-cache.outputs.cache-primary-key }}
+      - name: Restore release
+        id: restore-release
+        shell: bash
+        env:
+          RESTORE_DEST: ${{ inputs.destination }}
+          RATE_WINDOW: ${{ inputs.rate_window }}
+        run: |
+          set -o pipefail
+          python -m scripts.restore_market_data \
+            --archive-dir release-assets \
             --dest "$RESTORE_DEST" \
             --rate-window "$RATE_WINDOW" \
             --remove-archive
