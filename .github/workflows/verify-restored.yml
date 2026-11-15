@@ -103,6 +103,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Write run summary
+        id: write_summary
         if: always()
         shell: bash
         env:
@@ -110,6 +111,7 @@ jobs:
           CACHE_OUTCOME: ${{ steps.release-cache.outcome }}
           VERIFY_OUTCOME: ${{ steps.verify-restored.outcome }}
         run: |
+          set -o pipefail
           if [[ "$CACHE_HIT" == "true" ]]; then
             cache_status="hit"
           elif [[ "$CACHE_OUTCOME" == "success" ]]; then
@@ -124,4 +126,12 @@ jobs:
             echo "| --- | --- |"
             echo "| Release-parts cache | $cache_status |"
             echo "| Final verification | ${VERIFY_OUTCOME:-not run} |"
-          } | tee -a "$GITHUB_STEP_SUMMARY"
+          } | tee "$RUNNER_TEMP/restore-summary.md" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload run summary
+        if: always() && steps.write_summary.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-summary
+          path: ${{ runner.temp }}/restore-summary.md
+          if-no-files-found: error
+          retention-days: 30
