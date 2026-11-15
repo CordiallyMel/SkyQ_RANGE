@@ -1,0 +1,30 @@
+name: Scheduled release audit
+
+on:
+  schedule:
+    # Weekly, Monday 06:17 UTC. Avoid the top of the hour when GitHub runners
+    # are busiest.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-audit
+  cancel-in-progress: true
+
+jobs:
+  release-audit:
+    name: Release audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Audit published data release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python -m scripts.audit_release

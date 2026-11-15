@@ -380,9 +380,11 @@ cd dashboard && npm ci && npm run build
 The GitHub Actions workflow runs the Python test suite, the published-release
 audit and the TypeScript build on every push and pull request. The release
 audit checks the live release's part digests and MANIFEST against
-`data/releases/`; it does not download the large parts. Tests use an isolated
-SQLite database and never need broker credentials. Optional live integrations
-are marked as such and are not exercised by CI.
+`data/releases/`; it does not download the large parts. A separate **Scheduled
+release audit** workflow repeats that audit every Monday at 06:17 UTC, and can
+be run manually from the Actions tab, so release drift is caught even without a
+push. Tests use an isolated SQLite database and never need broker credentials.
+Optional live integrations are marked as such and are not exercised by CI.
 
 ## Regulation and risk notes (verified 2026-11-15)
 

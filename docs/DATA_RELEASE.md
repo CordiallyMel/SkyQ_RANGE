@@ -146,6 +146,10 @@ The CI **Release audit** job runs:
 python -m scripts.audit_release
 ```
 
+The separate **Scheduled release audit** workflow runs the same command every
+Monday at 06:17 UTC, and supports manual dispatch from the Actions tab. It
+catches release or manifest drift even when no code is pushed.
+
 It checks the GitHub release against the committed metadata, verifies each
 part's GitHub SHA-256 digest and size, downloads `SHA256SUMS`, `release.json`,
 `MANIFEST.csv` and `RESTORE.md`, and validates the 12,269-row manifest and file
