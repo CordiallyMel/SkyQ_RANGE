@@ -648,6 +648,7 @@ def _write_extract_state(
     member_count: int,
     completed: int,
     completed_bytes: int,
+    rate_window: float = EXTRACTION_RATE_WINDOW_SECONDS,
 ) -> None:
     temporary = state_path.with_name(state_path.name + ".tmp")
     temporary.write_text(
@@ -659,6 +660,7 @@ def _write_extract_state(
                 "members": member_count,
                 "completed": completed,
                 "completed_bytes": completed_bytes,
+                "rate_window": rate_window,
             }
         ),
         encoding="utf-8",
@@ -898,6 +900,7 @@ def _extract_archive(
                 len(members),
                 completed,
                 completed_bytes,
+                rate_window=rate_window,
             )
         progress.update(completed, completed_bytes, force=True)
     state_path.unlink(missing_ok=True)

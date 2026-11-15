@@ -183,7 +183,8 @@ To re-check an existing tree without re-downloading or extracting, run
 `python -m scripts.restore_market_data --verify-restored --dest data/restored`.
 Add `--report verification.json` to save a machine-readable result.
 Large extractions print member, byte, rate and ETA progress; adjust the
-smoothing window with `--rate-window SECONDS` (default 30).
+smoothing window with `--rate-window SECONDS` (default 30). Extraction
+checkpoints record the selected rate window for diagnostics.
 
 ## Per-file verification
 

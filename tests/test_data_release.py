@@ -605,6 +605,37 @@ def test_extract_passes_custom_rate_window(
     assert seen == [7.5]
 
 
+def test_extract_checkpoint_records_rate_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_path, digest = _test_archive(tmp_path)
+    destination = tmp_path / "restored"
+    state_path = _extract_state_path(archive_path)
+    original_extract = restore._extract_members
+    calls = 0
+
+    def interrupting_extract(
+        archive: tarfile.TarFile,
+        members: list[tarfile.TarInfo],
+        target: Path,
+        on_member=None,
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("simulated interruption")
+        original_extract(archive, members, target, on_member)
+
+    monkeypatch.setattr(restore, "EXTRACT_CHECKPOINT_MEMBERS", 3)
+    monkeypatch.setattr(restore, "_extract_members", interrupting_extract)
+    with pytest.raises(RuntimeError, match="simulated interruption"):
+        _extract_archive(archive_path, destination, digest, rate_window=12.5)
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["completed"] == 3
+    assert state["rate_window"] == 12.5
+
+
 def test_extract_reports_final_progress(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     archive_path, digest = _test_archive(tmp_path, count=5)
     destination = tmp_path / "restored"
