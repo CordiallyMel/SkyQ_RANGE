@@ -383,8 +383,11 @@ audit checks the live release's part digests and MANIFEST against
 `data/releases/`; it does not download the large parts. A separate **Scheduled
 release audit** workflow repeats that audit every Monday at 06:17 UTC, and can
 be run manually from the Actions tab, so release drift is caught even without a
-push. Tests use an isolated SQLite database and never need broker credentials.
-Optional live integrations are marked as such and are not exercised by CI.
+push. If a push or scheduled audit fails, the workflow opens a GitHub issue with
+the audit output and run details, or comments on the existing open audit issue.
+Pull-request audits do not open issues because fork tokens are read-only. Tests
+use an isolated SQLite database and never need broker credentials. Optional live
+integrations are marked as such and are not exercised by CI.
 
 ## Regulation and risk notes (verified 2026-11-15)
 

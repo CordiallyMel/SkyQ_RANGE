@@ -155,6 +155,12 @@ The separate **Scheduled release audit** workflow runs the same command every
 Monday at 06:17 UTC, and supports manual dispatch from the Actions tab. It
 catches release or manifest drift even when no code is pushed.
 
+When a push or scheduled audit fails, the workflow creates an issue titled
+`Release audit failed: <tag>` containing the audit output, commit and run link.
+Subsequent failures add a comment to the existing open issue instead of creating
+a duplicate. Pull-request audits do not open issues because fork tokens are
+read-only.
+
 It checks the GitHub release against the committed metadata, verifies each
 part's GitHub SHA-256 digest and size, downloads `SHA256SUMS`, `release.json`,
 `MANIFEST.csv` and `RESTORE.md`, and validates the 12,269-row manifest and file

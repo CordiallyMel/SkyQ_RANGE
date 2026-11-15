@@ -30,15 +30,33 @@ jobs:
     name: Release audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Audit published data release
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python -m scripts.audit_release
+        run: |
+          set -o pipefail
+          python -m scripts.audit_release 2>&1 | tee release-audit.log
+      - name: Report release audit failure
+        if: failure() && github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          AUDIT_LOG: release-audit.log
+          AUDIT_TAG: market-data-1m-2026-11-15
+          AUDIT_WORKFLOW: ${{ github.workflow }}
+          AUDIT_EVENT: ${{ github.event_name }}
+          AUDIT_SHA: ${{ github.sha }}
+          AUDIT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python -m scripts.report_release_audit_failure
 
   dashboard:
     name: Dashboard build
