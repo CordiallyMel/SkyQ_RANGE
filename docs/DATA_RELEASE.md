@@ -149,6 +149,31 @@ python -m scripts.import_market_data \
 single extracted file without re-downloading the archive. The restore helper
 also performs this verification across the full restored tree automatically.
 
+### Verify an existing restore
+
+To re-check an already restored tree without downloading parts, concatenating
+the tar or extracting again:
+
+```bash
+python -m scripts.restore_market_data \
+  --verify-restored \
+  --dest data/restored
+```
+
+The manifest is read from `skyq-range-1m-archive/MANIFEST.csv` under the
+destination by default. Alternatively, pass a release directory containing
+`MANIFEST.csv` (and optionally `SHA256SUMS`):
+
+```bash
+python -m scripts.restore_market_data \
+  --verify-restored \
+  --archive-dir release-assets \
+  --dest data/restored
+```
+
+The command exits non-zero if any manifest entry is missing, the wrong size or
+digest, or has an unsafe path.
+
 ## Release audit
 
 The CI **Release audit** job runs:

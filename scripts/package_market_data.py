@@ -179,6 +179,8 @@ skyq-range-1m-archive/
 
 Use `--verify-only` to check checksums without extracting.  Use
 `--remove-archive` to delete the reconstructed full tar after extraction.
+To re-check an existing tree without re-downloading or extracting, run
+`python -m scripts.restore_market_data --verify-restored --dest data/restored`.
 Large extractions print member, byte, rate and ETA progress.
 
 ## Per-file verification

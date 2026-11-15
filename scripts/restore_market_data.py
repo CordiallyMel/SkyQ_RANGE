@@ -20,6 +20,9 @@ Examples::
     # Verify a previously downloaded directory.
     python -m scripts.restore_market_data \
       --archive-dir release-assets --verify-only
+
+    # Verify an existing restored tree without re-downloading or extracting.
+    python -m scripts.restore_market_data --verify-restored --dest data/restored
 """
 
 from __future__ import annotations
@@ -58,7 +61,8 @@ def _parser() -> argparse.ArgumentParser:
         "--archive-dir",
         default=None,
         help=(
-            "directory containing *.part-*, SHA256SUMS and MANIFEST.csv "
+            "directory containing release assets, or MANIFEST.csv with "
+            "--verify-restored "
             f"(default with --download: {DEFAULT_ARCHIVE_DIR})"
         ),
     )
@@ -80,12 +84,21 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dest",
         default="data/restored",
-        help="extraction destination (default: data/restored)",
+        help="extraction or verification destination (default: data/restored)",
     )
-    parser.add_argument(
+    verify_group = parser.add_mutually_exclusive_group()
+    verify_group.add_argument(
         "--verify-only",
         action="store_true",
         help="verify the split parts but do not concatenate or extract",
+    )
+    verify_group.add_argument(
+        "--verify-restored",
+        action="store_true",
+        help=(
+            "verify an existing restored tree against MANIFEST.csv without "
+            "downloading, concatenating or extracting"
+        ),
     )
     parser.add_argument(
         "--remove-archive",
@@ -963,9 +976,49 @@ def _verify_restored_tree(destination: Path, manifest_path: Path) -> int:
     return total_rows
 
 
+def _verify_existing_restore(destination: Path, archive_dir: Path | None) -> int:
+    """Verify an already extracted tree without touching the release parts."""
+    if archive_dir is None:
+        manifest_path = destination / ARCHIVE_PREFIX / "MANIFEST.csv"
+    else:
+        manifest_path = archive_dir / "MANIFEST.csv"
+    if not manifest_path.is_file():
+        print(f"missing {manifest_path}", file=sys.stderr)
+        return 2
+    if archive_dir is not None:
+        sums_path = archive_dir / "SHA256SUMS"
+        if sums_path.is_file():
+            expected = _read_sums(sums_path).get("MANIFEST.csv")
+            if expected is not None:
+                print("verifying MANIFEST.csv ...", flush=True)
+                actual = _sha256(manifest_path)
+                if actual != expected:
+                    print("MANIFEST.csv checksum mismatch", file=sys.stderr)
+                    print(f"  expected {expected}", file=sys.stderr)
+                    print(f"  actual   {actual}", file=sys.stderr)
+                    return 1
+    try:
+        _verify_restored_tree(destination, manifest_path)
+    except (ManifestError, OSError) as exc:
+        print(f"restored tree verification failed: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
+    destination = Path(args.dest).expanduser().resolve()
+    if args.verify_restored:
+        if args.download:
+            parser.error("--download cannot be used with --verify-restored")
+        archive_dir = (
+            Path(args.archive_dir).expanduser().resolve()
+            if args.archive_dir
+            else None
+        )
+        return _verify_existing_restore(destination, archive_dir)
+
     if args.archive_dir:
         archive_dir = Path(args.archive_dir).expanduser().resolve()
     elif args.download:
@@ -973,7 +1026,6 @@ def main(argv: list[str] | None = None) -> int:
     else:
         parser.error("--archive-dir is required unless --download is used")
 
-    destination = Path(args.dest).expanduser().resolve()
     if args.download:
         try:
             _download_release(

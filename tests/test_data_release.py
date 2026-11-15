@@ -390,6 +390,49 @@ def test_manifest_verification_detects_changed_content(tmp_path: Path) -> None:
         manifest.unlink(missing_ok=True)
 
 
+def test_verify_restored_mode_uses_existing_tree_manifest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    archive_path, digest = _test_archive(tmp_path)
+    manifest = _manifest_for_source(tmp_path)
+    destination = tmp_path / "restored"
+    _extract_archive(archive_path, destination, digest)
+    tree_manifest = destination / "skyq-range-1m-archive" / "MANIFEST.csv"
+    tree_manifest.write_bytes(manifest.read_bytes())
+    manifest.unlink(missing_ok=True)
+
+    assert restore.main(["--verify-restored", "--dest", str(destination)]) == 0
+    assert "verified 10 restored files" in capsys.readouterr().out
+
+
+def test_verify_restored_mode_uses_archive_dir_manifest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    archive_path, digest = _test_archive(tmp_path)
+    manifest = _manifest_for_source(tmp_path)
+    destination = tmp_path / "restored"
+    _extract_archive(archive_path, destination, digest)
+    archive_dir = tmp_path / "assets"
+    archive_dir.mkdir()
+    (archive_dir / "MANIFEST.csv").write_bytes(manifest.read_bytes())
+    (archive_dir / "SHA256SUMS").write_text(
+        f"{hashlib.sha256(manifest.read_bytes()).hexdigest()}  MANIFEST.csv\n",
+        encoding="utf-8",
+    )
+    manifest.unlink(missing_ok=True)
+
+    assert restore.main(
+        [
+            "--verify-restored",
+            "--archive-dir",
+            str(archive_dir),
+            "--dest",
+            str(destination),
+        ]
+    ) == 0
+    assert "verified 10 restored files" in capsys.readouterr().out
+
+
 def test_restore_command_verifies_after_extraction(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -413,6 +456,10 @@ def test_restore_command_verifies_after_extraction(
         ["--archive-dir", str(archive_dir), "--dest", str(destination)]
     ) == 0
     assert "verified 10 restored files" in capsys.readouterr().out
+
+
+def test_verify_restored_mode_reports_a_missing_manifest(tmp_path: Path) -> None:
+    assert restore.main(["--verify-restored", "--dest", str(tmp_path / "missing")]) == 2
 
 
 def test_manifest_verification_after_a_resumed_extraction(
