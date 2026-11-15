@@ -121,7 +121,10 @@ The verifier checks every part SHA-256, reconstructs the full tar, checks the fu
 - `SHA256SUMS` — full-tar and per-part checksums
 - `MANIFEST.csv` — per-file size and SHA-256
 - `RESTORE.md` — full download and restore guide
+- `restore-summary.md` — latest cache and verification summary from the manual restore workflow
 - `release.json` — machine-readable sizes and checksums
+
+[Download the latest restore summary](https://github.com/{owner}/{repo}/releases/download/{tag}/restore-summary.md).
 
 The exact part count and sizes are recorded in `release.json`. The archive expands to `skyq-range-1m-archive/` with `Data_For_Backtests/`, `SkyQ_Sigma_S/data/`, `SkyQ_Scan/data/` and `Options_Edge/data/`.
 
