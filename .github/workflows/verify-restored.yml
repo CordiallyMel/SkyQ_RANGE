@@ -81,6 +81,7 @@ jobs:
             --rate-window "$RATE_WINDOW" \
             --remove-archive
       - name: Verify restored tree
+        id: verify-restored
         if: always()
         shell: bash
         env:
@@ -101,3 +102,26 @@ jobs:
           path: ${{ inputs.report }}
           if-no-files-found: error
           retention-days: 30
+      - name: Write run summary
+        if: always()
+        shell: bash
+        env:
+          CACHE_HIT: ${{ steps.release-cache.outputs.cache-hit }}
+          CACHE_OUTCOME: ${{ steps.release-cache.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify-restored.outcome }}
+        run: |
+          if [[ "$CACHE_HIT" == "true" ]]; then
+            cache_status="hit"
+          elif [[ "$CACHE_OUTCOME" == "success" ]]; then
+            cache_status="miss"
+          else
+            cache_status="unavailable (${CACHE_OUTCOME:-not run})"
+          fi
+          {
+            echo "## Restore verification"
+            echo
+            echo "| Item | Status |"
+            echo "| --- | --- |"
+            echo "| Release-parts cache | $cache_status |"
+            echo "| Final verification | ${VERIFY_OUTCOME:-not run} |"
+          } >> "$GITHUB_STEP_SUMMARY"
