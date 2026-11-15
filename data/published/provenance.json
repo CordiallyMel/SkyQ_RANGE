@@ -1,0 +1,18 @@
+{
+  "generated_at":"2026-11-15T13:22:07+00:00",
+  "source_comparison":"etf_1000sh_comparison.csv",
+  "source_ledgers":{
+    "SPY":{
+      "file":"skyq_range_spy_1000sh_2003_2026_trades.csv",
+      "rows":67271,
+      "sha256":"c570cf91ac5f20638c43144d736cb7ad1928b69fed6994cfdd2e4398d2453521"
+    },
+    "QQQ":{
+      "file":"skyq_range_qqq_1000sh_2003_2026_trades.csv",
+      "rows":32356,
+      "sha256":"2fc2331f831b46ffe83d6faab9a5d1a3567ab4442b71e939248c3eb8d1440d8c"
+    }
+  },
+  "starting_equity":1000000.0,
+  "note":"Equity curves are closed-trade, fixed-size, and non-compounded."
+}
