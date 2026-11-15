@@ -6,7 +6,9 @@ rejects unsafe archive members, extracts the data, and verifies the restored
 files against ``MANIFEST.csv``. Interrupted downloads resume from a checked
 ``.download`` partial when the remote asset supports HTTP range requests.
 Extraction checkpoints member progress, reports member, byte, rate and ETA
-progress for large archives, and resumes after an interrupted unpack.
+progress for large archives, and resumes after an interrupted unpack.  A
+resumed extraction warns when the checkpoint recorded a different smoothing
+window than the active ``--rate-window``.
 
 Examples::
 
@@ -894,6 +896,14 @@ def _extract_archive(
                 if checkpoint_window is not None
                 else ""
             )
+            if checkpoint_window is not None and checkpoint_window != rate_window:
+                print(
+                    "warning: checkpoint extraction rate window "
+                    f"{checkpoint_window:g}s differs from active --rate-window "
+                    f"{rate_window:g}s; using {rate_window:g}s",
+                    file=sys.stderr,
+                    flush=True,
+                )
             print(
                 f"resuming extraction at member {completed:,}/{len(members):,} "
                 f"into {destination}{window_text} ...",
