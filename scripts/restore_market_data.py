@@ -4,8 +4,8 @@ This is intentionally dependency-free.  It reads the release's ``SHA256SUMS``,
 verifies every downloaded part, concatenates them, verifies the full tar,
 rejects unsafe archive members, and extracts the data. Interrupted downloads
 resume from a checked ``.download`` partial when the remote asset supports
-HTTP range requests. Extraction checkpoints member progress and resumes after
-an interrupted unpack.
+HTTP range requests. Extraction checkpoints member progress, reports member
+and byte progress for large archives, and resumes after an interrupted unpack.
 
 Examples::
 
@@ -31,6 +31,7 @@ import shutil
 import sys
 import tarfile
 import time
+from collections.abc import Callable
 from http.client import IncompleteRead
 from pathlib import Path
 from typing import Any
@@ -665,28 +666,84 @@ def _completed_members_present(
     return all(_member_present(destination, member) for member in members[:completed])
 
 
-def _extract_members(
+def _extract_member(
     archive: tarfile.TarFile,
-    members: list[tarfile.TarInfo],
+    member: tarfile.TarInfo,
     destination: Path,
 ) -> None:
     # An interrupted batch may leave a symlink or hard link in place.  Remove
     # only link paths before retrying; regular files are safely overwritten.
-    for member in members:
-        if member.issym() or member.islnk():
-            path = destination / member.name
-            try:
-                if path.is_symlink() or path.exists():
-                    path.unlink()
-            except OSError:
-                # Let extractall report the real error below.
-                pass
+    if member.issym() or member.islnk():
+        path = destination / member.name
+        try:
+            if path.is_symlink() or path.exists():
+                path.unlink()
+        except OSError:
+            # Let extract report the real error below.
+            pass
     # Python 3.12+ has the PEP 706 data filter.  On 3.11 the members have
     # already been validated for absolute paths, ``..`` and unsafe links.
     if sys.version_info >= (3, 12):
-        archive.extractall(destination, members=members, filter="data")
+        archive.extract(member, destination, filter="data")
     else:
-        archive.extractall(destination, members=members)
+        archive.extract(member, destination)
+
+
+def _extract_members(
+    archive: tarfile.TarFile,
+    members: list[tarfile.TarInfo],
+    destination: Path,
+    on_member: Callable[[tarfile.TarInfo], None] | None = None,
+) -> None:
+    for member in members:
+        _extract_member(archive, member, destination)
+        if on_member is not None:
+            on_member(member)
+
+
+class _ExtractionProgress:
+    def __init__(
+        self, total_members: int, total_bytes: int, start_bytes: int = 0
+    ) -> None:
+        self.total_members = total_members
+        self.total_bytes = total_bytes
+        self.start_bytes = start_bytes
+        self.started = time.monotonic()
+        self.last_report = self.started
+        self.next_percent = 5.0
+        self.last_completed = -1
+
+    def update(self, completed: int, completed_bytes: int, *, force: bool = False) -> None:
+        if force and completed == self.last_completed:
+            return
+        now = time.monotonic()
+        percent = (completed / self.total_members * 100) if self.total_members else 100.0
+        if not force and now - self.last_report < 10 and percent < self.next_percent:
+            return
+        while percent >= self.next_percent:
+            self.next_percent += 5.0
+        if self.total_bytes:
+            byte_percent = completed_bytes / self.total_bytes * 100
+            bytes_text = (
+                f", {_gib(completed_bytes):.2f}/{_gib(self.total_bytes):.2f} GiB "
+                f"({byte_percent:.1f}%)"
+            )
+        else:
+            bytes_text = ""
+        elapsed = max(now - self.started, 0.001)
+        run_bytes = max(0, completed_bytes - self.start_bytes)
+        rate_text = (
+            f" at {_gib(run_bytes) / elapsed * 1024:.1f} MiB/s"
+            if run_bytes
+            else ""
+        )
+        print(
+            f"  extraction: {completed:,}/{self.total_members:,} members "
+            f"({percent:.1f}%){bytes_text}{rate_text}",
+            flush=True,
+        )
+        self.last_report = now
+        self.last_completed = completed
 
 
 def _extract_archive(archive_path: Path, destination: Path, archive_sha: str) -> None:
@@ -713,6 +770,8 @@ def _extract_archive(archive_path: Path, destination: Path, archive_sha: str) ->
             state_path.unlink(missing_ok=True)
             return
         completed_bytes = sum(member.size for member in members[:completed])
+        total_bytes = sum(member.size for member in members)
+        progress = _ExtractionProgress(len(members), total_bytes, completed_bytes)
         if completed:
             print(
                 f"resuming extraction at member {completed:,}/{len(members):,} "
@@ -723,7 +782,20 @@ def _extract_archive(archive_path: Path, destination: Path, archive_sha: str) ->
             print(f"extracting {len(members):,} members into {destination} ...", flush=True)
         for offset in range(completed, len(members), EXTRACT_CHECKPOINT_MEMBERS):
             batch = members[offset : offset + EXTRACT_CHECKPOINT_MEMBERS]
-            _extract_members(archive, batch, destination)
+            batch_completed = 0
+            batch_bytes = 0
+
+            def report_member(
+                member: tarfile.TarInfo,
+                start: int = offset,
+                base_bytes: int = completed_bytes,
+            ) -> None:
+                nonlocal batch_completed, batch_bytes
+                batch_completed += 1
+                batch_bytes += member.size
+                progress.update(start + batch_completed, base_bytes + batch_bytes)
+
+            _extract_members(archive, batch, destination, report_member)
             completed = offset + len(batch)
             completed_bytes += sum(member.size for member in batch)
             _write_extract_state(
@@ -734,6 +806,7 @@ def _extract_archive(archive_path: Path, destination: Path, archive_sha: str) ->
                 completed,
                 completed_bytes,
             )
+        progress.update(completed, completed_bytes, force=True)
     state_path.unlink(missing_ok=True)
 
 

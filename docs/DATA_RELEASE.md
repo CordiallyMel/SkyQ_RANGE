@@ -61,7 +61,8 @@ SHA-256 still match.
 Extraction is also checkpointed. If the unpack is interrupted, rerun the same
 command and it resumes after the last completed batch of members. The temporary
 checkpoint is `<archive-name>.extract-state.json`; it is removed after a
-successful extraction.
+successful extraction. Large extracts print member, byte and rate progress at
+five-percent or ten-second intervals.
 
 ### Download separately
 

@@ -292,12 +292,13 @@ def test_extract_resumes_after_an_interruption(
         archive: tarfile.TarFile,
         members: list[tarfile.TarInfo],
         target: Path,
+        on_member=None,
     ) -> None:
         nonlocal calls
         calls += 1
         if calls == 2:
             raise RuntimeError("simulated interruption")
-        original_extract(archive, members, target)
+        original_extract(archive, members, target, on_member)
 
     monkeypatch.setattr(restore, "EXTRACT_CHECKPOINT_MEMBERS", 3)
     monkeypatch.setattr(restore, "_extract_members", interrupting_extract)
@@ -343,6 +344,15 @@ def test_extracting_a_batch_twice_replaces_hard_links(tmp_path: Path) -> None:
     assert (
         destination / "skyq-range-1m-archive" / "linked.txt"
     ).read_text(encoding="utf-8") == "linked content\n"
+
+
+def test_extract_reports_final_progress(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    archive_path, digest = _test_archive(tmp_path, count=5)
+    destination = tmp_path / "restored"
+    _extract_archive(archive_path, destination, digest)
+    output = capsys.readouterr().out
+    assert "extraction: 5/5 members (100.0%)" in output
+    assert output.count("extraction: 5/5 members (100.0%)") == 1
 
 
 def test_extract_restarts_when_checkpoint_files_are_missing(tmp_path: Path) -> None:
