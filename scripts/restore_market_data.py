@@ -4,7 +4,8 @@ This is intentionally dependency-free.  It reads the release's ``SHA256SUMS``,
 verifies every downloaded part, concatenates them, verifies the full tar,
 rejects unsafe archive members, and extracts the data. Interrupted downloads
 resume from a checked ``.download`` partial when the remote asset supports
-HTTP range requests.
+HTTP range requests. Extraction checkpoints member progress and resumes after
+an interrupted unpack.
 
 Examples::
 
@@ -42,6 +43,8 @@ DEFAULT_REPO = "CordiallyMel/SkyQ_RANGE"
 DEFAULT_ARCHIVE_DIR = "release-assets"
 SMALL_ASSETS = {"SHA256SUMS", "MANIFEST.csv", "RESTORE.md", "release.json"}
 SPACE_CUSHION = 512 * 1024 * 1024
+EXTRACT_STATE_SCHEMA = 1
+EXTRACT_CHECKPOINT_MEMBERS = 100
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -520,6 +523,13 @@ def _download_release(
     archive_path = archive_dir / metadata["archive"]
     archive_bytes = 0 if archive_path.is_file() or verify_only else int(metadata["archive_bytes"])
     extract_bytes = 0 if verify_only else int(metadata["uncompressed_bytes"])
+    if not verify_only:
+        already_extracted = _completed_extraction_bytes(
+            _extract_state_path(archive_path),
+            str(metadata["archive_sha256"]),
+            destination,
+        )
+        extract_bytes = max(0, extract_bytes - min(already_extracted, extract_bytes))
     missing_bytes = sum(size for _, size in missing)
     if _same_filesystem(archive_dir, destination):
         _require_space(
@@ -552,6 +562,179 @@ def _concatenate(parts: list[Path], destination: Path) -> None:
             print(f"appending {part.name}", flush=True)
             with part.open("rb") as source:
                 shutil.copyfileobj(source, output, length=8 * 1024 * 1024)
+
+
+def _extract_state_path(archive_path: Path) -> Path:
+    return archive_path.with_name(archive_path.name + ".extract-state.json")
+
+
+def _read_extract_state(
+    state_path: Path,
+    archive_sha: str,
+    destination: Path,
+    member_count: int,
+) -> int:
+    try:
+        value = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return 0
+    if not isinstance(value, dict):
+        state_path.unlink(missing_ok=True)
+        return 0
+    completed = value.get("completed")
+    if (
+        value.get("schema") != EXTRACT_STATE_SCHEMA
+        or value.get("archive_sha256") != archive_sha
+        or value.get("destination") != str(destination)
+        or value.get("members") != member_count
+        or not isinstance(completed, int)
+        or completed < 0
+        or completed > member_count
+    ):
+        state_path.unlink(missing_ok=True)
+        return 0
+    return completed
+
+
+def _write_extract_state(
+    state_path: Path,
+    archive_sha: str,
+    destination: Path,
+    member_count: int,
+    completed: int,
+    completed_bytes: int,
+) -> None:
+    temporary = state_path.with_name(state_path.name + ".tmp")
+    temporary.write_text(
+        json.dumps(
+            {
+                "schema": EXTRACT_STATE_SCHEMA,
+                "archive_sha256": archive_sha,
+                "destination": str(destination),
+                "members": member_count,
+                "completed": completed,
+                "completed_bytes": completed_bytes,
+            }
+        ),
+        encoding="utf-8",
+    )
+    temporary.replace(state_path)
+
+
+def _completed_extraction_bytes(
+    state_path: Path, archive_sha: str, destination: Path
+) -> int:
+    """Return bytes already unpacked by a matching interrupted extraction."""
+    try:
+        value = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return 0
+    if not isinstance(value, dict):
+        return 0
+    completed = value.get("completed_bytes")
+    if (
+        value.get("schema") != EXTRACT_STATE_SCHEMA
+        or value.get("archive_sha256") != archive_sha
+        or value.get("destination") != str(destination)
+        or not isinstance(completed, int)
+        or completed < 0
+    ):
+        return 0
+    return completed
+
+
+def _member_present(destination: Path, member: tarfile.TarInfo) -> bool:
+    path = destination / member.name
+    try:
+        if member.isdir():
+            return path.is_dir()
+        if member.issym():
+            return path.is_symlink()
+        if member.islnk():
+            return path.is_file()
+        if member.isfile():
+            return path.is_file() and path.stat().st_size == member.size
+        return path.exists()
+    except OSError:
+        return False
+
+
+def _completed_members_present(
+    destination: Path, members: list[tarfile.TarInfo], completed: int
+) -> bool:
+    return all(_member_present(destination, member) for member in members[:completed])
+
+
+def _extract_members(
+    archive: tarfile.TarFile,
+    members: list[tarfile.TarInfo],
+    destination: Path,
+) -> None:
+    # An interrupted batch may leave a symlink or hard link in place.  Remove
+    # only link paths before retrying; regular files are safely overwritten.
+    for member in members:
+        if member.issym() or member.islnk():
+            path = destination / member.name
+            try:
+                if path.is_symlink() or path.exists():
+                    path.unlink()
+            except OSError:
+                # Let extractall report the real error below.
+                pass
+    # Python 3.12+ has the PEP 706 data filter.  On 3.11 the members have
+    # already been validated for absolute paths, ``..`` and unsafe links.
+    if sys.version_info >= (3, 12):
+        archive.extractall(destination, members=members, filter="data")
+    else:
+        archive.extractall(destination, members=members)
+
+
+def _extract_archive(archive_path: Path, destination: Path, archive_sha: str) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    state_path = _extract_state_path(archive_path)
+    with tarfile.open(archive_path, "r") as archive:
+        members = archive.getmembers()
+        for member in members:
+            _safe_member(member)
+        completed = _read_extract_state(
+            state_path, archive_sha, destination, len(members)
+        )
+        if completed and not _completed_members_present(
+            destination, members, completed
+        ):
+            print(
+                "previous extraction checkpoint is incomplete; restarting extraction",
+                flush=True,
+            )
+            state_path.unlink(missing_ok=True)
+            completed = 0
+        if completed == len(members):
+            print(f"extraction already complete at {destination}", flush=True)
+            state_path.unlink(missing_ok=True)
+            return
+        completed_bytes = sum(member.size for member in members[:completed])
+        if completed:
+            print(
+                f"resuming extraction at member {completed:,}/{len(members):,} "
+                f"into {destination} ...",
+                flush=True,
+            )
+        else:
+            print(f"extracting {len(members):,} members into {destination} ...", flush=True)
+        for offset in range(completed, len(members), EXTRACT_CHECKPOINT_MEMBERS):
+            batch = members[offset : offset + EXTRACT_CHECKPOINT_MEMBERS]
+            _extract_members(archive, batch, destination)
+            completed = offset + len(batch)
+            completed_bytes += sum(member.size for member in batch)
+            _write_extract_state(
+                state_path,
+                archive_sha,
+                destination,
+                len(members),
+                completed,
+                completed_bytes,
+            )
+    state_path.unlink(missing_ok=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -627,17 +810,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     destination.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(full_path, "r") as archive:
-        members = archive.getmembers()
-        for member in members:
-            _safe_member(member)
-        print(f"extracting {len(members):,} members into {destination} ...", flush=True)
-        # Python 3.12+ has the PEP 706 data filter.  On 3.11 we have already
-        # validated paths and refuse unsafe members above.
-        if sys.version_info >= (3, 12):
-            archive.extractall(destination, filter="data")
-        else:
-            archive.extractall(destination)
+    _extract_archive(full_path, destination, expected_full)
     print(f"restored archive to {destination}", flush=True)
     if args.remove_archive:
         full_path.unlink(missing_ok=True)

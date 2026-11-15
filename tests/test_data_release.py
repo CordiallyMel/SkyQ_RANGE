@@ -6,16 +6,21 @@ import csv
 import hashlib
 import http.server
 import json
+import tarfile
 import tempfile
 import threading
 from pathlib import Path
 
 import pytest
 
+from scripts import restore_market_data as restore
 from scripts.audit_release import AuditError, _load_local, _validate_manifest
 from scripts.restore_market_data import (
     DownloadError,
+    _completed_extraction_bytes,
     _download_asset,
+    _extract_archive,
+    _extract_state_path,
     _partial_paths,
     _partial_remaining,
     _require_space,
@@ -239,6 +244,129 @@ def test_download_restarts_when_server_ignores_range(tmp_path: Path) -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def _test_archive(tmp_path: Path, count: int = 10) -> tuple[Path, str]:
+    source = tmp_path / "source"
+    source.mkdir()
+    archive_path = tmp_path / "market-data.tar"
+    with tarfile.open(archive_path, "w") as archive:
+        for index in range(count):
+            member = source / f"file-{index:02d}.txt"
+            member.write_text(f"member {index}\n", encoding="utf-8")
+            archive.add(member, arcname=f"skyq-range-1m-archive/{member.name}")
+    return archive_path, hashlib.sha256(archive_path.read_bytes()).hexdigest()
+
+
+def test_completed_extraction_bytes_only_uses_a_matching_state(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "archive.tar.extract-state.json"
+    destination = tmp_path / "restored"
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "archive_sha256": "abc",
+                "destination": str(destination),
+                "completed_bytes": 1234,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert _completed_extraction_bytes(state_path, "abc", destination) == 1234
+    assert _completed_extraction_bytes(state_path, "different", destination) == 0
+    assert _completed_extraction_bytes(state_path, "abc", tmp_path / "other") == 0
+
+
+def test_extract_resumes_after_an_interruption(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_path, digest = _test_archive(tmp_path)
+    destination = tmp_path / "restored"
+    state_path = _extract_state_path(archive_path)
+    original_extract = restore._extract_members
+    calls = 0
+
+    def interrupting_extract(
+        archive: tarfile.TarFile,
+        members: list[tarfile.TarInfo],
+        target: Path,
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("simulated interruption")
+        original_extract(archive, members, target)
+
+    monkeypatch.setattr(restore, "EXTRACT_CHECKPOINT_MEMBERS", 3)
+    monkeypatch.setattr(restore, "_extract_members", interrupting_extract)
+    with pytest.raises(RuntimeError, match="simulated interruption"):
+        _extract_archive(archive_path, destination, digest)
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["completed"] == 3
+    assert state["completed_bytes"] == sum(
+        (tmp_path / "source" / f"file-{index:02d}.txt").stat().st_size
+        for index in range(3)
+    )
+    first_path = destination / "skyq-range-1m-archive" / "file-00.txt"
+    assert first_path.is_file()
+    first_path.write_text("keep 000\n", encoding="utf-8")
+
+    monkeypatch.setattr(restore, "_extract_members", original_extract)
+    _extract_archive(archive_path, destination, digest)
+    assert first_path.read_text(encoding="utf-8") == "keep 000\n"
+    for index in range(1, 10):
+        path = destination / "skyq-range-1m-archive" / f"file-{index:02d}.txt"
+        assert path.read_text(encoding="utf-8") == f"member {index}\n"
+    assert not state_path.exists()
+
+
+def test_extracting_a_batch_twice_replaces_hard_links(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    original = source / "original.txt"
+    original.write_text("linked content\n", encoding="utf-8")
+    linked = source / "linked.txt"
+    linked.hardlink_to(original)
+    archive_path = tmp_path / "links.tar"
+    with tarfile.open(archive_path, "w") as archive:
+        archive.add(original, arcname="skyq-range-1m-archive/original.txt")
+        archive.add(linked, arcname="skyq-range-1m-archive/linked.txt")
+    destination = tmp_path / "restored"
+    destination.mkdir()
+    with tarfile.open(archive_path) as archive:
+        members = archive.getmembers()
+        restore._extract_members(archive, members, destination)
+        restore._extract_members(archive, members, destination)
+    assert (
+        destination / "skyq-range-1m-archive" / "linked.txt"
+    ).read_text(encoding="utf-8") == "linked content\n"
+
+
+def test_extract_restarts_when_checkpoint_files_are_missing(tmp_path: Path) -> None:
+    archive_path, digest = _test_archive(tmp_path)
+    destination = tmp_path / "restored"
+    destination.mkdir()
+    state_path = _extract_state_path(archive_path)
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "archive_sha256": digest,
+                "destination": str(destination),
+                "members": 10,
+                "completed": 3,
+            }
+        ),
+        encoding="utf-8",
+    )
+    _extract_archive(archive_path, destination, digest)
+    for index in range(10):
+        path = destination / "skyq-range-1m-archive" / f"file-{index:02d}.txt"
+        assert path.is_file()
+    assert not state_path.exists()
 
 
 def test_download_resumes_after_an_interrupted_response(tmp_path: Path) -> None:

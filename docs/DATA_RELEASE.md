@@ -58,6 +58,11 @@ helper resumes from the verified `.download` partial using an HTTP range
 request, after confirming the source URL, asset size, ETag and expected
 SHA-256 still match.
 
+Extraction is also checkpointed. If the unpack is interrupted, rerun the same
+command and it resumes after the last completed batch of members. The temporary
+checkpoint is `<archive-name>.extract-state.json`; it is removed after a
+successful extraction.
+
 ### Download separately
 
 ```bash
