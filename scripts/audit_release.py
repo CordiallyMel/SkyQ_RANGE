@@ -37,6 +37,9 @@ DEFAULT_TAG = "market-data-1m-2026-11-15"
 DEFAULT_REPO = "CordiallyMel/SkyQ_RANGE"
 ARCHIVE_PREFIX = "skyq-range-1m-archive/"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+RESTORE_SUMMARY_LINK_RE = re.compile(
+    r"\[`?restore-summary\.md`?\]\((https://[^)\s]+/restore-summary\.md)\)"
+)
 
 
 class AuditError(RuntimeError):
@@ -266,6 +269,17 @@ def _download_and_check(
     return destination
 
 
+def _validate_restore_summary(restore_text: str, summary_asset: dict[str, Any]) -> str:
+    """Require RESTORE.md to link directly to the published summary asset."""
+    links = RESTORE_SUMMARY_LINK_RE.findall(restore_text)
+    if len(links) != 1:
+        raise AuditError("RESTORE.md must link exactly one restore-summary.md asset")
+    expected = str(summary_asset.get("browser_download_url") or "")
+    if not expected or links[0] != expected:
+        raise AuditError("RESTORE.md restore-summary.md link does not match the release asset")
+    return links[0]
+
+
 def _audit(
     tag: str,
     repo: str,
@@ -289,8 +303,14 @@ def _audit(
 
     assets = {str(asset.get("name")): asset for asset in release.get("assets", [])}
     part_names = [part["name"] for part in metadata["parts"]]
-    required = set(part_names) | {"SHA256SUMS", "MANIFEST.csv", "RESTORE.md", "release.json"}
-    optional = {"catalog.json", "restore-summary.md"}
+    required = set(part_names) | {
+        "SHA256SUMS",
+        "MANIFEST.csv",
+        "RESTORE.md",
+        "release.json",
+        "restore-summary.md",
+    }
+    optional = {"catalog.json"}
     missing = sorted(required - set(assets))
     if missing:
         raise AuditError(f"release is missing assets: {', '.join(missing)}")
@@ -370,6 +390,20 @@ def _audit(
         restore_text = (tmp / "RESTORE.md").read_text(encoding="utf-8")
         if tag not in restore_text or f"{tag}.tar.part-*" not in restore_text:
             raise AuditError("RESTORE.md does not describe the audited tag")
+        summary_asset = assets["restore-summary.md"]
+        if summary_asset.get("state") != "uploaded":
+            raise AuditError(
+                f"restore-summary.md: GitHub asset state is {summary_asset.get('state')!r}"
+            )
+        _validate_restore_summary(restore_text, summary_asset)
+        _download_and_check(
+            summary_asset,
+            "restore-summary.md",
+            None,
+            tmp,
+            token,
+            timeout,
+        )
 
         if download_parts:
             for part in metadata["parts"]:
