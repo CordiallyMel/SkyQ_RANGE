@@ -138,6 +138,11 @@ def test_build_documents_updates_only_the_restore_line(tmp_path: Path) -> None:
 
     assert documents.restore == _restore_text(TAG).encode("utf-8")
     assert b"warn when it differs from the active" in documents.restore
+    assert (
+        b"https://github.com/CordiallyMel/SkyQ_RANGE/releases/download/"
+        + TAG.encode("utf-8")
+        + b"/restore-summary.md"
+    ) in documents.restore
     assert documents.restore_digest == _digest(documents.restore)
     assert documents.notes == publish._release_notes_text(
         TAG, "CordiallyMel", "SkyQ_RANGE"

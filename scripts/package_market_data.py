@@ -166,6 +166,9 @@ If you already have the assets, download them with the GitHub CLI:
 gh release download {tag} --repo {owner}/{repo} --dir release-assets
 ```
 
+The latest cache and verification result is available in
+[`restore-summary.md`](https://github.com/{owner}/{repo}/releases/download/{tag}/restore-summary.md).
+
 Or download every `*.part-*`, `SHA256SUMS`, `MANIFEST.csv` and `RESTORE.md`
 from the release page into one directory. Then restore from that directory:
 
