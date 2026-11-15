@@ -35,6 +35,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import os
 import shutil
 import sys
@@ -111,6 +112,16 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         metavar="PATH",
         help="write a JSON verification report to PATH (requires --verify-restored)",
+    )
+    parser.add_argument(
+        "--rate-window",
+        type=float,
+        default=EXTRACTION_RATE_WINDOW_SECONDS,
+        metavar="SECONDS",
+        help=(
+            "smoothing window for extraction rate and ETA "
+            f"(default: {EXTRACTION_RATE_WINDOW_SECONDS:g})"
+        ),
     )
     parser.add_argument(
         "--remove-archive",
@@ -753,9 +764,11 @@ class _ExtractionProgress:
         total_bytes: int,
         start_bytes: int = 0,
         start_members: int = 0,
+        window_seconds: float = EXTRACTION_RATE_WINDOW_SECONDS,
     ) -> None:
         self.total_members = total_members
         self.total_bytes = total_bytes
+        self.window_seconds = window_seconds
         self.started = time.monotonic()
         self.last_report = self.started
         self.next_percent = 5.0
@@ -769,7 +782,7 @@ class _ExtractionProgress:
             return
         now = time.monotonic()
         self.samples.append((now, completed, completed_bytes))
-        cutoff = now - EXTRACTION_RATE_WINDOW_SECONDS
+        cutoff = now - self.window_seconds
         while len(self.samples) > 2 and self.samples[1][0] <= cutoff:
             self.samples.popleft()
         percent = (completed / self.total_members * 100) if self.total_members else 100.0
@@ -815,7 +828,12 @@ class _ExtractionProgress:
         self.last_completed = completed
 
 
-def _extract_archive(archive_path: Path, destination: Path, archive_sha: str) -> None:
+def _extract_archive(
+    archive_path: Path,
+    destination: Path,
+    archive_sha: str,
+    rate_window: float = EXTRACTION_RATE_WINDOW_SECONDS,
+) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     state_path = _extract_state_path(archive_path)
     with tarfile.open(archive_path, "r") as archive:
@@ -841,7 +859,11 @@ def _extract_archive(archive_path: Path, destination: Path, archive_sha: str) ->
         completed_bytes = sum(member.size for member in members[:completed])
         total_bytes = sum(member.size for member in members)
         progress = _ExtractionProgress(
-            len(members), total_bytes, completed_bytes, completed
+            len(members),
+            total_bytes,
+            completed_bytes,
+            completed,
+            window_seconds=rate_window,
         )
         if completed:
             print(
@@ -1202,6 +1224,8 @@ def _verify_existing_restore(
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
+    if not math.isfinite(args.rate_window) or args.rate_window <= 0:
+        parser.error("--rate-window must be a positive finite number of seconds")
     destination = Path(args.dest).expanduser().resolve()
     if args.report and not args.verify_restored:
         parser.error("--report requires --verify-restored")
@@ -1302,7 +1326,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     destination.mkdir(parents=True, exist_ok=True)
-    _extract_archive(full_path, destination, expected_full)
+    _extract_archive(
+        full_path,
+        destination,
+        expected_full,
+        rate_window=args.rate_window,
+    )
     try:
         _verify_restored_tree(destination, manifest_path)
     except (ManifestError, OSError) as exc:

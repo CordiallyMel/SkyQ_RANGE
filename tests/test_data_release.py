@@ -539,7 +539,14 @@ def test_restore_command_verifies_after_extraction(
     )
     destination = tmp_path / "restored"
     assert restore.main(
-        ["--archive-dir", str(archive_dir), "--dest", str(destination)]
+        [
+            "--archive-dir",
+            str(archive_dir),
+            "--dest",
+            str(destination),
+            "--rate-window",
+            "5",
+        ]
     ) == 0
     assert "verified 10 restored files" in capsys.readouterr().out
 
@@ -581,6 +588,23 @@ def test_manifest_verification_after_a_resumed_extraction(
         manifest.unlink(missing_ok=True)
 
 
+def test_extract_passes_custom_rate_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_path, digest = _test_archive(tmp_path, count=1)
+    destination = tmp_path / "restored"
+    seen: list[float] = []
+    original = restore._ExtractionProgress
+
+    def recording(*args: object, **kwargs: object) -> restore._ExtractionProgress:
+        seen.append(float(kwargs["window_seconds"]))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(restore, "_ExtractionProgress", recording)
+    _extract_archive(archive_path, destination, digest, rate_window=7.5)
+    assert seen == [7.5]
+
+
 def test_extract_reports_final_progress(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     archive_path, digest = _test_archive(tmp_path, count=5)
     destination = tmp_path / "restored"
@@ -618,6 +642,20 @@ def test_extraction_progress_smooths_rate_over_a_window(
     progress.update(30, 300, force=True)
     output = capsys.readouterr().out
     assert "ETA 3m 30s" in output.splitlines()[-1]
+
+
+def test_extraction_progress_honors_a_custom_window(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    times = iter([100.0, 105.0, 110.0, 115.0, 120.0])
+    monkeypatch.setattr(restore.time, "monotonic", lambda: next(times))
+    progress = restore._ExtractionProgress(100, 1000, window_seconds=5)
+    progress.update(10, 100, force=True)
+    progress.update(20, 200, force=True)
+    progress.update(30, 300, force=True)
+    progress.update(35, 350, force=True)
+    output = capsys.readouterr().out
+    assert "ETA 1m 05s" in output.splitlines()[-1]
 
 
 def test_extract_restarts_when_checkpoint_files_are_missing(tmp_path: Path) -> None:

@@ -182,7 +182,8 @@ Use `--verify-only` to check checksums without extracting.  Use
 To re-check an existing tree without re-downloading or extracting, run
 `python -m scripts.restore_market_data --verify-restored --dest data/restored`.
 Add `--report verification.json` to save a machine-readable result.
-Large extractions print member, byte, rate and ETA progress.
+Large extractions print member, byte, rate and ETA progress; adjust the
+smoothing window with `--rate-window SECONDS` (default 30).
 
 ## Per-file verification
 
