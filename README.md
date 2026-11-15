@@ -121,6 +121,8 @@ dashboard/                  React/Vite/TypeScript control center
 sql/                        PostgreSQL DDL, views, optional market_bars
 configs/runners/            per-runner quantity/side/stop JSON presets
 data/catalog.json           inventory of the external research archive
+data/releases/              checksums and metadata for the published data release
+docs/DATA_RELEASE.md        split 1-minute archive download/restore guide
 data/published/             committed metrics, equity, recent-trade sample
 reports/                    canonical reports, attribution and sensitivity
 tests/                      strategy, API, LSE 1m and paper tests
@@ -425,6 +427,7 @@ See [SECURITY.md](SECURITY.md) for reporting and secret-handling guidance.
 - [Architecture](docs/ARCHITECTURE.md)
 - [Methodology and execution model](docs/METHODOLOGY.md)
 - [Data and SQL](docs/DATA.md)
+- [1-minute data release](docs/DATA_RELEASE.md)
 - [Integrations and credentials](docs/INTEGRATIONS.md)
 - [Operations runbook](docs/OPERATIONS.md)
 - [Risk and regulation](docs/RISK_AND_REGULATION.md)

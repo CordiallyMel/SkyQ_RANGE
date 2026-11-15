@@ -1,7 +1,14 @@
 {
   "schema": 1,
   "generated": "2026-11-15",
-  "note": "The raw archive is intentionally not committed to Git. Sizes are approximate and paths are relative to the owner's archive root. Use scripts/stitch_bars.py and scripts/import_market_data.py to create local working copies.",
+  "note": "The raw archive is intentionally not committed to Git. The one-minute subset is published as split release assets; see docs/DATA_RELEASE.md. Sizes are approximate and paths are relative to the owner's archive root. Use scripts/stitch_bars.py and scripts/import_market_data.py to create local working copies.",
+  "release": {
+    "tag": "market-data-1m-2026-11-15",
+    "docs": "docs/DATA_RELEASE.md",
+    "checksums": "data/releases/market-data-1m-2026-11-15.sha256",
+    "metadata": "data/releases/market-data-1m-2026-11-15.json",
+    "format": "split tar release assets with SHA-256 part and full-archive checksums"
+  },
   "archive_roots": {
     "etf_and_futures": "Data_For_Backtests",
     "futures_and_macro": "SkyQ_Sigma_S/data",
