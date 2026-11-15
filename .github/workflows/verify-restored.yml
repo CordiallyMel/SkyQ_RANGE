@@ -1,0 +1,79 @@
+name: Verify restored data
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to restore and verify
+        required: true
+        default: market-data-1m-2026-11-15
+        type: string
+      destination:
+        description: Workspace-relative directory for the restored tree
+        required: true
+        default: data/restored
+        type: string
+      rate_window:
+        description: Extraction rate smoothing window in seconds
+        required: true
+        default: "30"
+        type: string
+      report:
+        description: Workspace-relative path for the JSON report
+        required: true
+        default: ci-artifacts/verification.json
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-restored-data
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Restore and verify release
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download and restore release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RESTORE_DEST: ${{ inputs.destination }}
+          RATE_WINDOW: ${{ inputs.rate_window }}
+        run: |
+          set -o pipefail
+          python -m scripts.restore_market_data \
+            --download \
+            --tag "$RELEASE_TAG" \
+            --dest "$RESTORE_DEST" \
+            --rate-window "$RATE_WINDOW" \
+            --remove-archive
+      - name: Verify restored tree
+        if: always()
+        shell: bash
+        env:
+          RESTORE_DEST: ${{ inputs.destination }}
+          REPORT_PATH: ${{ inputs.report }}
+        run: |
+          set -o pipefail
+          python -m scripts.restore_market_data \
+            --verify-restored \
+            --archive-dir release-assets \
+            --dest "$RESTORE_DEST" \
+            --report "$REPORT_PATH"
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restored-tree-verification
+          path: ${{ inputs.report }}
+          if-no-files-found: error
+          retention-days: 30

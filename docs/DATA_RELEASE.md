@@ -190,9 +190,18 @@ python -m scripts.restore_market_data \
 
 CI exercises the success, content-mismatch and missing-manifest report paths
 with deterministic fixtures and uploads them as the `verification-reports`
-artifact. This validates the report format without downloading the full archive;
-verifying an actual restored tree still requires the tree to be present locally
-or on the CI runner.
+artifact. This validates the report format without downloading the full archive.
+
+### Verify a real restored tree in CI
+
+The **Verify restored data** workflow is manual: open **Actions**, select the
+workflow and choose **Run workflow**. It downloads the selected release, restores
+it, runs a separate `--verify-restored` pass, and uploads the JSON report as the
+`restored-tree-verification` artifact. Success and failure reports are retained.
+
+The job uses about 19 GB of temporary disk and can take a while on a cold
+runner, so it is not part of the push/PR workflow. The `tag`, destination,
+rate window and report path are configurable when dispatching it.
 
 ## Release audit
 
