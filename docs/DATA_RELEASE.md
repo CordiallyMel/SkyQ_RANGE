@@ -62,9 +62,10 @@ Extraction is also checkpointed. If the unpack is interrupted, rerun the same
 command and it resumes after the last completed batch of members. The temporary
 checkpoint is `<archive-name>.extract-state.json`; it is removed after a
 successful extraction. Large extracts print member, byte and rate progress at
-five-percent or ten-second intervals. After extraction, including a resumed
-extraction, the helper verifies every restored file's size and SHA-256 against
-`MANIFEST.csv` and fails if any entry is missing or changed.
+five-percent or ten-second intervals, including an estimated time remaining.
+After extraction, including a resumed extraction, the helper verifies every
+restored file's size and SHA-256 against `MANIFEST.csv` and fails if any entry
+is missing or changed.
 
 ### Download separately
 

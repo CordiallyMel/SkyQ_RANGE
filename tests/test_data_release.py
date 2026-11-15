@@ -457,6 +457,23 @@ def test_extract_reports_final_progress(tmp_path: Path, capsys: pytest.CaptureFi
     assert output.count("extraction: 5/5 members (100.0%)") == 1
 
 
+def test_format_duration() -> None:
+    assert restore._format_duration(0) == "0s"
+    assert restore._format_duration(65) == "1m 05s"
+    assert restore._format_duration(3661) == "1h 01m"
+
+
+def test_extraction_progress_includes_eta(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    times = iter([100.0, 102.0])
+    monkeypatch.setattr(restore.time, "monotonic", lambda: next(times))
+    progress = restore._ExtractionProgress(10, 100)
+    progress.update(5, 50)
+    output = capsys.readouterr().out
+    assert "ETA 2s" in output
+
+
 def test_extract_restarts_when_checkpoint_files_are_missing(tmp_path: Path) -> None:
     archive_path, digest = _test_archive(tmp_path)
     destination = tmp_path / "restored"

@@ -5,8 +5,8 @@ verifies every downloaded part, concatenates them, verifies the full tar,
 rejects unsafe archive members, extracts the data, and verifies the restored
 files against ``MANIFEST.csv``. Interrupted downloads resume from a checked
 ``.download`` partial when the remote asset supports HTTP range requests.
-Extraction checkpoints member progress, reports member and byte progress for
-large archives, and resumes after an interrupted unpack.
+Extraction checkpoints member progress, reports member, byte, rate and ETA
+progress for large archives, and resumes after an interrupted unpack.
 
 Examples::
 
@@ -709,6 +709,18 @@ def _extract_members(
             on_member(member)
 
 
+def _format_duration(seconds: float) -> str:
+    """Format a non-negative duration for the extraction progress line."""
+    total_seconds = max(0, round(seconds))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds_part = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    if minutes:
+        return f"{minutes}m {seconds_part:02d}s"
+    return f"{seconds_part}s"
+
+
 class _ExtractionProgress:
     def __init__(
         self, total_members: int, total_bytes: int, start_bytes: int = 0
@@ -745,9 +757,22 @@ class _ExtractionProgress:
             if run_bytes
             else ""
         )
+        eta_text = ""
+        if completed < self.total_members:
+            if self.total_bytes and completed_bytes < self.total_bytes and run_bytes:
+                remaining_seconds = (
+                    (self.total_bytes - completed_bytes)
+                    / (run_bytes / elapsed)
+                )
+                eta_text = f", ETA {_format_duration(remaining_seconds)}"
+            elif completed:
+                remaining_seconds = (
+                    (self.total_members - completed) / (completed / elapsed)
+                )
+                eta_text = f", ETA {_format_duration(remaining_seconds)}"
         print(
             f"  extraction: {completed:,}/{self.total_members:,} members "
-            f"({percent:.1f}%){bytes_text}{rate_text}",
+            f"({percent:.1f}%){bytes_text}{rate_text}{eta_text}",
             flush=True,
         )
         self.last_report = now

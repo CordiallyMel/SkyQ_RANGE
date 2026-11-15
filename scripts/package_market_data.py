@@ -179,6 +179,7 @@ skyq-range-1m-archive/
 
 Use `--verify-only` to check checksums without extracting.  Use
 `--remove-archive` to delete the reconstructed full tar after extraction.
+Large extractions print member, byte, rate and ETA progress.
 
 ## Per-file verification
 
