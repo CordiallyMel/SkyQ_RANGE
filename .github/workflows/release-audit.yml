@@ -26,6 +26,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Audit published data release
+        id: audit
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -56,3 +57,17 @@ jobs:
           AUDIT_SHA: ${{ github.sha }}
           AUDIT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: python -m scripts.notify_release_audit_failure
+      - name: Write run summary
+        if: always()
+        shell: bash
+        env:
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          {
+            echo "## Scheduled release audit"
+            echo
+            echo "| Item | Result |"
+            echo "| --- | --- |"
+            echo "| Dependency cache | not used |"
+            echo "| Final verification | ${AUDIT_OUTCOME:-not run} |"
+          } >> "$GITHUB_STEP_SUMMARY"

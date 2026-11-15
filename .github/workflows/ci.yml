@@ -15,6 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
+        id: setup-python
         with:
           python-version: "3.12"
           cache: pip
@@ -24,6 +25,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Test
+        id: test
         run: pytest -q
       - name: Generate verification reports
         if: always()
@@ -40,6 +42,29 @@ jobs:
           name: verification-reports
           path: ci-artifacts/**/verification.json
           if-no-files-found: error
+      - name: Write run summary
+        if: always()
+        shell: bash
+        env:
+          CACHE_HIT: ${{ steps.setup-python.outputs.cache-hit }}
+          CACHE_OUTCOME: ${{ steps.setup-python.outcome }}
+          TEST_OUTCOME: ${{ steps.test.outcome }}
+        run: |
+          if [[ "$CACHE_HIT" == "true" ]]; then
+            cache_status="hit"
+          elif [[ "$CACHE_OUTCOME" == "success" ]]; then
+            cache_status="miss"
+          else
+            cache_status="unavailable (${CACHE_OUTCOME:-not run})"
+          fi
+          {
+            echo "## Python tests"
+            echo
+            echo "| Item | Result |"
+            echo "| --- | --- |"
+            echo "| pip cache | $cache_status |"
+            echo "| Final verification | ${TEST_OUTCOME:-not run} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   release-audit:
     name: Release audit
@@ -54,6 +79,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Audit published data release
+        id: audit
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -72,6 +98,20 @@ jobs:
           AUDIT_SHA: ${{ github.sha }}
           AUDIT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: python -m scripts.report_release_audit_failure
+      - name: Write run summary
+        if: always()
+        shell: bash
+        env:
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          {
+            echo "## Release audit"
+            echo
+            echo "| Item | Result |"
+            echo "| --- | --- |"
+            echo "| Dependency cache | not used |"
+            echo "| Final verification | ${AUDIT_OUTCOME:-not run} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   dashboard:
     name: Dashboard build
@@ -82,6 +122,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
+        id: setup-node
         with:
           node-version: "22"
           cache: npm
@@ -89,4 +130,28 @@ jobs:
       - name: Install
         run: npm ci
       - name: Build
+        id: build
         run: npm run build
+      - name: Write run summary
+        if: always()
+        shell: bash
+        env:
+          CACHE_HIT: ${{ steps.setup-node.outputs.cache-hit }}
+          CACHE_OUTCOME: ${{ steps.setup-node.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          if [[ "$CACHE_HIT" == "true" ]]; then
+            cache_status="hit"
+          elif [[ "$CACHE_OUTCOME" == "success" ]]; then
+            cache_status="miss"
+          else
+            cache_status="unavailable (${CACHE_OUTCOME:-not run})"
+          fi
+          {
+            echo "## Dashboard build"
+            echo
+            echo "| Item | Result |"
+            echo "| --- | --- |"
+            echo "| npm cache | $cache_status |"
+            echo "| Final build | ${BUILD_OUTCOME:-not run} |"
+          } >> "$GITHUB_STEP_SUMMARY"
