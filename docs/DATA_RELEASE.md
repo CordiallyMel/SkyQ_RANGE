@@ -187,6 +187,12 @@ python -m scripts.restore_market_data \
   --report verification.json
 ```
 
+CI exercises the success, content-mismatch and missing-manifest report paths
+with deterministic fixtures and uploads them as the `verification-reports`
+artifact. This validates the report format without downloading the full archive;
+verifying an actual restored tree still requires the tree to be present locally
+or on the CI runner.
+
 ## Release audit
 
 The CI **Release audit** job runs:

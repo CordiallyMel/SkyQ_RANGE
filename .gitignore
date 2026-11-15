@@ -31,6 +31,7 @@ dashboard/.vite/
 *.tsbuildinfo
 reports/.futures-*
 reports/backtests/.merged-*
+ci-artifacts/
 .DS_Store
 Thumbs.db
 *.pem

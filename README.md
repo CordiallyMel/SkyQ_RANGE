@@ -378,7 +378,11 @@ cd dashboard && npm ci && npm run build
 ```
 
 The GitHub Actions workflow runs the Python test suite, the published-release
-audit and the TypeScript build on every push and pull request. The release
+audit and the TypeScript build on every push and pull request. The Python job
+also regenerates the three `--verify-restored` JSON report cases into
+`ci-artifacts/` and uploads them as the `verification-reports` artifact. Those
+are deterministic fixtures for the report format and failure paths, not a full
+release-tree verification. The release
 audit checks the live release's part digests and MANIFEST against
 `data/releases/`; it does not download the large parts. A separate **Scheduled
 release audit** workflow repeats that audit every Monday at 06:17 UTC, and can
