@@ -1,6 +1,6 @@
 export type BookKey = "SPY" | "QQQ";
 export type WindowKey = "2003-2026" | "2007-2026";
-export type ViewKey = "overview" | "trades" | "research" | "system";
+export type ViewKey = "overview" | "trades" | "research" | "forward" | "system";
 
 export interface Metrics {
   trades: number;
@@ -119,6 +119,36 @@ export interface AuditEvent {
   at: string | null;
   action: string;
   actor: string;
+}
+
+export interface RunnerConfig {
+  file: string;
+  valid: boolean;
+  error?: string;
+  runner_id?: string;
+  symbol?: string;
+  broker?: string;
+  data_source?: string;
+  quantity?: number;
+  sides?: string;
+  stop_ticks?: number;
+  max_hold_bars?: number;
+  flat_at?: string;
+  poll_seconds?: number;
+}
+
+export interface BrokerOption {
+  name: string;
+  required_env: string[];
+  implemented: boolean;
+  note: string;
+}
+
+export interface RunnerCatalog {
+  config_dir: string;
+  runners: RunnerConfig[];
+  data_sources: { name: string; description: string }[];
+  brokers: BrokerOption[];
 }
 
 export interface SystemInfo {

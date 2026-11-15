@@ -4,6 +4,7 @@ import type {
   ControlStatus,
   FuturesRow,
   Overview,
+  RunnerCatalog,
   SystemInfo,
   TradePage,
   WindowKey,
@@ -67,6 +68,10 @@ export function getFutures(signal?: AbortSignal): Promise<FuturesRow[]> {
 
 export function getSystem(signal?: AbortSignal): Promise<SystemInfo> {
   return request<SystemInfo>("/api/system", { signal });
+}
+
+export function getRunners(signal?: AbortSignal): Promise<RunnerCatalog> {
+  return request<RunnerCatalog>("/api/runners", { signal });
 }
 
 export function getControl(): Promise<ControlStatus> {

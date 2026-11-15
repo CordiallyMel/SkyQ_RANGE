@@ -71,12 +71,26 @@ def test_overview_and_trades(client: TestClient) -> None:
     assert all(row["side"] in {"LONG", "SHORT"} for row in tape["rows"])
 
 
+def test_runner_catalog_has_no_secret_values(client: TestClient) -> None:
+    response = client.get("/api/runners")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["config_dir"] == "configs/runners"
+    ids = {row["runner_id"] for row in body["runners"]}
+    assert {"spy-1m-paper", "qqq-1m-paper"} <= ids
+    spy = next(row for row in body["runners"] if row["runner_id"] == "spy-1m-paper")
+    assert spy["quantity"] == 1000
+    assert spy["broker"] == "simulated"
+    assert "LSE_API_KEY" not in response.text
+    assert "ALPACA_SECRET_KEY" in response.text  # env name, never a value
+
+
 def test_futures_gate_is_negative(client: TestClient) -> None:
     response = client.get("/api/research/futures")
     assert response.status_code == 200
     rows = response.json()
     assert {row["symbol"] for row in rows} == {
-        "MES", "MNQ", "M2K", "ZT", "ES", "NQ", "ZN", "CL", "GC"
+        "MES", "MNQ", "M2K", "ZT", "ES", "NQ", "ZN", "CL", "GC", "YM"
     }
     assert all(row["net_per_month"] < 0 for row in rows)
     assert all(row["verdict"] == "negative after costs" for row in rows)

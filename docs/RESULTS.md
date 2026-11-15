@@ -41,6 +41,7 @@ in the middle of the sample; the terminal P&L alone hides that.
 | ZN | 10-Year T-Note | 1,874 | 0.563 | -$42,095.88 | -$469.89 | negative after costs |
 | CL | WTI Crude | 20,035 | 0.754 | -$327,594.20 | -$3,656.75 | negative after costs |
 | GC | Gold | 6,836 | 0.856 | -$149,074.32 | -$1,664.03 | negative after costs |
+| YM | E-mini Dow | 7,313 | 0.916 | -$59,444.56 | -$729.05 | negative after costs |
 
 No tested futures symbol clears the gate. This is evidence against a naive
 cross-asset transfer; it is not a proof that no futures configuration could
@@ -53,6 +54,10 @@ python -m scripts.backtest_range --symbol SPY --quantity 1000 \
   --data /path/to/SPY_1m_24y.parquet \
   --start 2003-09-10 --end 2026-11-04
 ```
+
+The attribution and one-factor sensitivity tables are in
+[`ATTRIBUTION_AND_SENSITIVITY.md`](../reports/ATTRIBUTION_AND_SENSITIVITY.md),
+with interpretation in [`ATTRIBUTION.md`](ATTRIBUTION.md).
 
 The canonical reports are `reports/backtests/skyq_range_spy_1000sh_2003_2026.txt`
 and the QQQ counterpart. The published CSV is generated from the canonical

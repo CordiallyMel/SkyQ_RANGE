@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { control, getBooks, getFutures, getOverview, getSystem } from "./api";
 import { Icon, type IconName } from "./components/Icons";
+import { ForwardView } from "./views/ForwardView";
 import { OverviewView } from "./views/OverviewView";
 import { ResearchView } from "./views/ResearchView";
 import { SystemView } from "./views/SystemView";
@@ -19,6 +20,7 @@ const NAV: { key: ViewKey; label: string; caption: string; icon: IconName }[] = 
   { key: "overview", label: "Overview", caption: "Books & risk", icon: "dashboard" },
   { key: "trades", label: "Trade tape", caption: "Closed trades", icon: "trades" },
   { key: "research", label: "Research", caption: "Cross-asset gate", icon: "research" },
+  { key: "forward", label: "Forward", caption: "Runner lab", icon: "flask" },
   { key: "system", label: "System", caption: "Data & control", icon: "system" },
 ];
 
@@ -26,6 +28,7 @@ const TITLES: Record<ViewKey, string> = {
   overview: "Overview",
   trades: "Trade tape",
   research: "Research gate",
+  forward: "Forward runner lab",
   system: "System & control",
 };
 
@@ -205,6 +208,7 @@ export default function App() {
           {view === "research" && (
             <ResearchView futures={futures} books={books} onOpenTrades={() => setView("trades")} />
           )}
+          {view === "forward" && <ForwardView />}
           {view === "system" && (
             <SystemView
               system={system}

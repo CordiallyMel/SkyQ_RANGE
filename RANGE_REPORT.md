@@ -104,7 +104,7 @@ stress test, not the reverse.
 
 ## 4. Cross-asset gate
 
-The published ETF geometry was transferred unchanged to nine futures series:
+The published ETF geometry was transferred unchanged to ten futures series:
 long-only, one contract, 20% channel entry, 0.20% minimum width, 100-tick stop,
 20%-of-channel target, 120-bar time stop, 15:55 flat, regular hours, one tick of
 slippage and the profile commission.
@@ -120,13 +120,27 @@ slippage and the profile commission.
 | ZN | 10-Year T-Note | 1,874 | 0.563 | -$42,095.88 | -$469.89 | negative after costs |
 | CL | WTI Crude | 20,035 | 0.754 | -$327,594.20 | -$3,656.75 | negative after costs |
 | GC | Gold | 6,836 | 0.856 | -$149,074.32 | -$1,664.03 | negative after costs |
+| YM | E-mini Dow | 7,313 | 0.916 | -$59,444.56 | -$729.05 | negative after costs |
 
 The high futures win rates do not save the books: the target is too small
 relative to the per-contract cost and the wide stop. This is a falsification test,
 not a parameter search. A missing file is a data-availability failure, not a pass.
 The live runner refuses every futures symbol before opening a broker connection.
 
-## 5. What changed from the legacy report
+## 5. Attribution and one-factor sensitivity
+
+The canonical ledgers are decomposed by side, exit reason, hour, weekday, year,
+channel-width quartile and holding time. A separate one-factor sweep changes the
+stop, target, entry zone, hold limit, cooldown and side filter while holding the
+rest of the baseline fixed. The generated tables are in
+[`reports/ATTRIBUTION_AND_SENSITIVITY.md`](reports/ATTRIBUTION_AND_SENSITIVITY.md)
+and the machine-readable files are `reports/attribution.csv` and
+`reports/sensitivity.csv`.
+
+These are descriptive and stability checks, not a second out-of-sample study.
+The selected parameters still live on the same history.
+
+## 6. What changed from the legacy report
 
 The earlier standalone repositories contained a 25-share, 2019–2026 study with a
 different both-sides default and an older QQQ conclusion. That work is not
@@ -143,7 +157,7 @@ Older commands named `scripts.backtest_bocs` and `scripts.research_bocs` are not
 part of this standalone repository. Use `scripts.backtest_range` and
 `scripts/research_futures`.
 
-## 6. Reproduction
+## 7. Reproduction
 
 ```bash
 python -m scripts.backtest_range --symbol SPY --quantity 1000 \
@@ -160,7 +174,7 @@ python -m scripts.research_futures --data-root /path/to/futures/parquet
 The exact console reports are in `reports/backtests/`. The portable metrics,
 equity and sample trades are in `data/published/`.
 
-## 7. Limitations
+## 8. Limitations
 
 - **In-sample selection.** Parameters were selected on the available history;
   the subperiod split is a consistency check, not a clean out-of-sample test.

@@ -92,6 +92,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ledger-dir", action="append", default=[])
     parser.add_argument("--comparison", default=None)
+    parser.add_argument("--futures", default=str(ROOT / "reports" / "futures_gate.csv"))
     parser.add_argument("--out", default=str(OUT))
     args = parser.parse_args()
 
@@ -148,6 +149,14 @@ def main() -> int:
     pd.concat(recent_frames, ignore_index=True).to_csv(
         out / "recent_trades.csv", index=False
     )
+    futures_path = Path(args.futures)
+    if futures_path.is_file():
+        futures = pd.read_csv(futures_path)
+        futures.to_csv(out / "futures_gate.csv", index=False)
+        provenance["source_futures"] = {
+            "file": futures_path.name,
+            "rows": int(len(futures)),
+        }
     (out / "provenance.json").write_text(
         pd.Series(provenance).to_json(force_ascii=False, indent=2),
         encoding="utf-8",

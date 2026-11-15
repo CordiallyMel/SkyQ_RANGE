@@ -35,3 +35,9 @@ reports/backtests/.merged-*
 Thumbs.db
 *.pem
 *.key
+
+# local LSE bridge / forward-test state
+data/lse/
+data/forward/
+data/test_fixture/
+data/test_forward/

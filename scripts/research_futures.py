@@ -54,6 +54,7 @@ CASES: tuple[Case, ...] = (
     Case("ZN", "zn_1m.parquet", "2019-05-06", "2026-10-23", "10-Year T-Note"),
     Case("CL", "cl_1m.parquet", "2019-05-06", "2026-10-23", "WTI Crude"),
     Case("GC", "gc_1m.parquet", "2019-05-06", "2026-10-23", "Gold"),
+    Case("YM", "ym_1m.parquet", "2019-05-06", "2026-10-23", "E-mini Dow"),
 )
 
 
@@ -175,7 +176,7 @@ def main() -> int:
         help="directory containing mes_1m.parquet, zt_1m.parquet, etc.",
     )
     parser.add_argument("--out", default="reports")
-    parser.add_argument("--symbols", default="MES,MNQ,M2K,ZT,ES,NQ,ZN,CL,GC")
+    parser.add_argument("--symbols", default="MES,MNQ,M2K,ZT,ES,NQ,ZN,CL,GC,YM")
     args = parser.parse_args()
 
     wanted = {part.strip().upper() for part in args.symbols.split(",") if part.strip()}
