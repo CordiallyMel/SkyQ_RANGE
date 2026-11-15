@@ -110,8 +110,10 @@ jobs:
           CACHE_HIT: ${{ steps.release-cache.outputs.cache-hit }}
           CACHE_OUTCOME: ${{ steps.release-cache.outcome }}
           VERIFY_OUTCOME: ${{ steps.verify-restored.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -o pipefail
+          timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           if [[ "$CACHE_HIT" == "true" ]]; then
             cache_status="hit"
           elif [[ "$CACHE_OUTCOME" == "success" ]]; then
@@ -126,6 +128,8 @@ jobs:
             echo "| --- | --- |"
             echo "| Release-parts cache | $cache_status |"
             echo "| Final verification | ${VERIFY_OUTCOME:-not run} |"
+            echo "| Verification run | [#${GITHUB_RUN_NUMBER}]($RUN_URL) |"
+            echo "| Generated at | $timestamp |"
           } | tee "$RUNNER_TEMP/restore-summary.md" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload run summary
         if: always() && steps.write_summary.outcome == 'success'
