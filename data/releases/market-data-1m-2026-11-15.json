@@ -1,10 +1,10 @@
 {
   "schema": 1,
   "tag": "market-data-1m-2026-11-15",
-  "generated_utc": "2026-11-15T15:35:41.278018+00:00",
+  "generated_utc": "2026-11-15T16:23:48.931939+00:00",
   "archive": "market-data-1m-2026-11-15.tar",
   "archive_bytes": 6849075200,
-  "archive_sha256": "b9a164aa6cd916a41794168dd4a0511796c9a68da1cf52258746ca8d0e2b7bb8",
+  "archive_sha256": "38bd3949f9b756bd67b35d8869c5bb6037dbea3e849f163b378c04e114834510",
   "split_mib": 1800,
   "files": 12269,
   "uncompressed_bytes": 7039147076,
@@ -27,7 +27,7 @@
     {
       "name": "market-data-1m-2026-11-15.tar.part-004",
       "bytes": 1186764800,
-      "sha256": "2ea6349604c1c7fe9c15966a574a79de6a99ebc2bff3d864c6041f65a568ffe0"
+      "sha256": "8b1b7863519a8c6fe2ae1df963902b496457d00d9b04a88e106f09ceb7aedd0e"
     }
   ],
   "checksums": "SHA256SUMS",

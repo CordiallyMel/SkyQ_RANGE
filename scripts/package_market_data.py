@@ -364,6 +364,7 @@ def main(argv: list[str] | None = None) -> int:
     sums.write_text(
         "".join(f"{digest}  {name}\n" for digest, name in checksums),
         encoding="utf-8",
+        newline="\n",
     )
 
     release = {
