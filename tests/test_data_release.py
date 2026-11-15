@@ -521,6 +521,19 @@ def test_extraction_progress_includes_eta(
     assert "ETA 2s" in output
 
 
+def test_extraction_progress_smooths_rate_over_a_window(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    times = iter([100.0, 105.0, 110.0, 140.0])
+    monkeypatch.setattr(restore.time, "monotonic", lambda: next(times))
+    progress = restore._ExtractionProgress(100, 1000)
+    progress.update(10, 100, force=True)
+    progress.update(20, 200, force=True)
+    progress.update(30, 300, force=True)
+    output = capsys.readouterr().out
+    assert "ETA 3m 30s" in output.splitlines()[-1]
+
+
 def test_extract_restarts_when_checkpoint_files_are_missing(tmp_path: Path) -> None:
     archive_path, digest = _test_archive(tmp_path)
     destination = tmp_path / "restored"

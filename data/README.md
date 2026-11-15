@@ -19,7 +19,7 @@ The helper downloads into `release-assets/`, checks free space, verifies every
 part SHA-256, checks the full tar checksum, and rejects unsafe paths before
 extracting. Set `GITHUB_TOKEN` to avoid anonymous API rate limits. Interrupted
 downloads and interrupted extraction both resume when the command is rerun;
-long extractions print member, byte, rate and ETA progress, and the restored
+long extractions print member, byte, smoothed rate and ETA progress, and the restored
 files are checked against `MANIFEST.csv` afterward. Use
 `--verify-only` to download and check without extracting; use
 `--archive-dir release-assets` if you already downloaded the parts. To re-check

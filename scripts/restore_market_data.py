@@ -36,6 +36,7 @@ import shutil
 import sys
 import tarfile
 import time
+from collections import deque
 from collections.abc import Callable
 from http.client import IncompleteRead
 from pathlib import Path, PurePosixPath
@@ -51,6 +52,7 @@ SMALL_ASSETS = {"SHA256SUMS", "MANIFEST.csv", "RESTORE.md", "release.json"}
 SPACE_CUSHION = 512 * 1024 * 1024
 EXTRACT_STATE_SCHEMA = 1
 EXTRACT_CHECKPOINT_MEMBERS = 100
+EXTRACTION_RATE_WINDOW_SECONDS = 30.0
 ARCHIVE_PREFIX = "skyq-range-1m-archive/"
 MANIFEST_HEADER = ["archive_path", "source_label", "size_bytes", "sha256"]
 
@@ -736,20 +738,30 @@ def _format_duration(seconds: float) -> str:
 
 class _ExtractionProgress:
     def __init__(
-        self, total_members: int, total_bytes: int, start_bytes: int = 0
+        self,
+        total_members: int,
+        total_bytes: int,
+        start_bytes: int = 0,
+        start_members: int = 0,
     ) -> None:
         self.total_members = total_members
         self.total_bytes = total_bytes
-        self.start_bytes = start_bytes
         self.started = time.monotonic()
         self.last_report = self.started
         self.next_percent = 5.0
         self.last_completed = -1
+        self.samples: deque[tuple[float, int, int]] = deque(
+            [(self.started, start_members, start_bytes)]
+        )
 
     def update(self, completed: int, completed_bytes: int, *, force: bool = False) -> None:
         if force and completed == self.last_completed:
             return
         now = time.monotonic()
+        self.samples.append((now, completed, completed_bytes))
+        cutoff = now - EXTRACTION_RATE_WINDOW_SECONDS
+        while len(self.samples) > 2 and self.samples[1][0] <= cutoff:
+            self.samples.popleft()
         percent = (completed / self.total_members * 100) if self.total_members else 100.0
         if not force and now - self.last_report < 10 and percent < self.next_percent:
             return
@@ -763,24 +775,25 @@ class _ExtractionProgress:
             )
         else:
             bytes_text = ""
-        elapsed = max(now - self.started, 0.001)
-        run_bytes = max(0, completed_bytes - self.start_bytes)
+        oldest_time, oldest_members, oldest_bytes = self.samples[0]
+        window_elapsed = max(now - oldest_time, 0.001)
+        window_bytes = max(0, completed_bytes - oldest_bytes)
+        window_members = max(0, completed - oldest_members)
+        bytes_per_second = window_bytes / window_elapsed
+        members_per_second = window_members / window_elapsed
         rate_text = (
-            f" at {_gib(run_bytes) / elapsed * 1024:.1f} MiB/s"
-            if run_bytes
+            f" at {_gib(window_bytes) / window_elapsed * 1024:.1f} MiB/s"
+            if window_bytes
             else ""
         )
         eta_text = ""
         if completed < self.total_members:
-            if self.total_bytes and completed_bytes < self.total_bytes and run_bytes:
-                remaining_seconds = (
-                    (self.total_bytes - completed_bytes)
-                    / (run_bytes / elapsed)
-                )
+            if self.total_bytes and completed_bytes < self.total_bytes and bytes_per_second:
+                remaining_seconds = (self.total_bytes - completed_bytes) / bytes_per_second
                 eta_text = f", ETA {_format_duration(remaining_seconds)}"
-            elif completed:
+            elif members_per_second:
                 remaining_seconds = (
-                    (self.total_members - completed) / (completed / elapsed)
+                    (self.total_members - completed) / members_per_second
                 )
                 eta_text = f", ETA {_format_duration(remaining_seconds)}"
         print(
@@ -817,7 +830,9 @@ def _extract_archive(archive_path: Path, destination: Path, archive_sha: str) ->
             return
         completed_bytes = sum(member.size for member in members[:completed])
         total_bytes = sum(member.size for member in members)
-        progress = _ExtractionProgress(len(members), total_bytes, completed_bytes)
+        progress = _ExtractionProgress(
+            len(members), total_bytes, completed_bytes, completed
+        )
         if completed:
             print(
                 f"resuming extraction at member {completed:,}/{len(members):,} "
