@@ -2,10 +2,11 @@
 
 This is intentionally dependency-free.  It reads the release's ``SHA256SUMS``,
 verifies every downloaded part, concatenates them, verifies the full tar,
-rejects unsafe archive members, and extracts the data. Interrupted downloads
-resume from a checked ``.download`` partial when the remote asset supports
-HTTP range requests. Extraction checkpoints member progress, reports member
-and byte progress for large archives, and resumes after an interrupted unpack.
+rejects unsafe archive members, extracts the data, and verifies the restored
+files against ``MANIFEST.csv``. Interrupted downloads resume from a checked
+``.download`` partial when the remote asset supports HTTP range requests.
+Extraction checkpoints member progress, reports member and byte progress for
+large archives, and resumes after an interrupted unpack.
 
 Examples::
 
@@ -24,6 +25,7 @@ Examples::
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import os
@@ -33,7 +35,7 @@ import tarfile
 import time
 from collections.abc import Callable
 from http.client import IncompleteRead
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -46,6 +48,8 @@ SMALL_ASSETS = {"SHA256SUMS", "MANIFEST.csv", "RESTORE.md", "release.json"}
 SPACE_CUSHION = 512 * 1024 * 1024
 EXTRACT_STATE_SCHEMA = 1
 EXTRACT_CHECKPOINT_MEMBERS = 100
+ARCHIVE_PREFIX = "skyq-range-1m-archive/"
+MANIFEST_HEADER = ["archive_path", "source_label", "size_bytes", "sha256"]
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -118,6 +122,10 @@ def _read_sums(path: Path) -> dict[str, str]:
 
 class DownloadError(RuntimeError):
     """Raised when the optional release download cannot be completed safely."""
+
+
+class ManifestError(RuntimeError):
+    """Raised when extracted files do not match the release manifest."""
 
 
 def _gib(value: int) -> float:
@@ -810,6 +818,126 @@ def _extract_archive(archive_path: Path, destination: Path, archive_sha: str) ->
     state_path.unlink(missing_ok=True)
 
 
+def _valid_sha256(value: str) -> bool:
+    return len(value) == 64 and all(character in "0123456789abcdefABCDEF" for character in value)
+
+
+def _verify_restored_tree(destination: Path, manifest_path: Path) -> int:
+    """Check every MANIFEST row against the restored tree."""
+    if not manifest_path.is_file():
+        raise ManifestError(f"missing manifest: {manifest_path}")
+
+    destination_root = destination.resolve()
+    errors: list[str] = []
+    error_count = 0
+    seen: set[str] = set()
+    checked = 0
+    checked_bytes = 0
+    total_rows = 0
+    started = time.monotonic()
+    last_report = started
+
+    def record_error(message: str) -> None:
+        nonlocal error_count
+        error_count += 1
+        if len(errors) < 20:
+            errors.append(message)
+
+    print(f"verifying restored files against {manifest_path.name} ...", flush=True)
+    with manifest_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.reader(handle)
+        try:
+            header = next(reader)
+        except StopIteration as exc:
+            raise ManifestError("MANIFEST.csv is empty") from exc
+        if header != MANIFEST_HEADER:
+            raise ManifestError(f"unexpected MANIFEST.csv header: {header!r}")
+
+        for line_number, row in enumerate(reader, start=2):
+            total_rows += 1
+            if len(row) != 4:
+                record_error(f"row {line_number}: expected 4 fields, got {len(row)}")
+                continue
+            archive_path, _source_label, size_text, digest = row
+            try:
+                size = int(size_text)
+            except ValueError:
+                record_error(f"row {line_number}: invalid size {size_text!r}")
+                continue
+            if size < 0:
+                record_error(f"row {line_number}: negative size")
+                continue
+            if not _valid_sha256(digest):
+                record_error(f"row {line_number}: invalid SHA-256")
+                continue
+            if archive_path in seen:
+                record_error(f"row {line_number}: duplicate path {archive_path!r}")
+                continue
+            seen.add(archive_path)
+
+            pure_path = PurePosixPath(archive_path)
+            if (
+                not archive_path.startswith(ARCHIVE_PREFIX)
+                or pure_path.is_absolute()
+                or ".." in pure_path.parts
+            ):
+                record_error(f"row {line_number}: unsafe path {archive_path!r}")
+                continue
+
+            path = destination.joinpath(*pure_path.parts)
+            try:
+                path.resolve(strict=False).relative_to(destination_root)
+            except (OSError, ValueError):
+                record_error(f"{archive_path}: path escapes the restore directory")
+                continue
+            if path.is_symlink():
+                record_error(f"{archive_path}: expected a regular file, found a symlink")
+                continue
+            try:
+                if not path.is_file():
+                    record_error(f"{archive_path}: missing")
+                    continue
+                actual_size = path.stat().st_size
+                if actual_size != size:
+                    record_error(
+                        f"{archive_path}: size mismatch (expected {size:,}, got {actual_size:,})"
+                    )
+                    continue
+                actual_digest = _sha256(path)
+            except OSError as exc:
+                record_error(f"{archive_path}: cannot read: {exc}")
+                continue
+
+            checked += 1
+            checked_bytes += actual_size
+            if actual_digest != digest.lower():
+                record_error(f"{archive_path}: SHA-256 mismatch")
+                continue
+            now = time.monotonic()
+            if now - last_report >= 10 or checked % 1000 == 0:
+                print(
+                    f"  manifest: {checked:,} files, "
+                    f"{_gib(checked_bytes):.2f} GiB checked",
+                    flush=True,
+                )
+                last_report = now
+
+    if error_count:
+        for message in errors:
+            print(f"  {message}", file=sys.stderr)
+        if error_count > len(errors):
+            print(f"  ... and {error_count - len(errors):,} more errors", file=sys.stderr)
+        raise ManifestError(
+            f"{error_count:,} of {total_rows:,} manifest entries failed verification"
+        )
+    print(
+        f"verified {total_rows:,} restored files "
+        f"({_gib(checked_bytes):.2f} GiB) against {manifest_path.name}",
+        flush=True,
+    )
+    return total_rows
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
@@ -873,6 +1001,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"using existing {full_path.name}", flush=True)
     else:
         _concatenate(parts, full_path)
+    manifest_path = archive_dir / "MANIFEST.csv"
+    expected_manifest = sums.get("MANIFEST.csv")
+    if not manifest_path.is_file():
+        print(f"missing {manifest_path}", file=sys.stderr)
+        return 2
+    if expected_manifest is None:
+        print("SHA256SUMS has no MANIFEST.csv entry", file=sys.stderr)
+        return 2
+    print("verifying MANIFEST.csv ...", flush=True)
+    actual_manifest = _sha256(manifest_path)
+    if actual_manifest != expected_manifest:
+        print("MANIFEST.csv checksum mismatch", file=sys.stderr)
+        print(f"  expected {expected_manifest}", file=sys.stderr)
+        print(f"  actual   {actual_manifest}", file=sys.stderr)
+        return 1
     expected_full = sums[full_name]
     print("verifying full archive (this can take a minute) ...", flush=True)
     actual_full = _sha256(full_path)
@@ -884,6 +1027,11 @@ def main(argv: list[str] | None = None) -> int:
 
     destination.mkdir(parents=True, exist_ok=True)
     _extract_archive(full_path, destination, expected_full)
+    try:
+        _verify_restored_tree(destination, manifest_path)
+    except (ManifestError, OSError) as exc:
+        print(f"restored tree verification failed: {exc}", file=sys.stderr)
+        return 1
     print(f"restored archive to {destination}", flush=True)
     if args.remove_archive:
         full_path.unlink(missing_ok=True)

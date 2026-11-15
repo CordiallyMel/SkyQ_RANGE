@@ -17,6 +17,7 @@ from scripts import restore_market_data as restore
 from scripts.audit_release import AuditError, _load_local, _validate_manifest
 from scripts.restore_market_data import (
     DownloadError,
+    ManifestError,
     _completed_extraction_bytes,
     _download_asset,
     _extract_archive,
@@ -24,6 +25,7 @@ from scripts.restore_market_data import (
     _partial_paths,
     _partial_remaining,
     _require_space,
+    _verify_restored_tree,
 )
 
 
@@ -344,6 +346,106 @@ def test_extracting_a_batch_twice_replaces_hard_links(tmp_path: Path) -> None:
     assert (
         destination / "skyq-range-1m-archive" / "linked.txt"
     ).read_text(encoding="utf-8") == "linked content\n"
+
+
+def _manifest_for_source(tmp_path: Path, count: int = 10) -> Path:
+    rows: list[list[str]] = []
+    for index in range(count):
+        name = f"file-{index:02d}.txt"
+        path = tmp_path / "source" / name
+        rows.append(
+            [
+                f"skyq-range-1m-archive/{name}",
+                "Data_For_Backtests",
+                str(path.stat().st_size),
+                hashlib.sha256(path.read_bytes()).hexdigest(),
+            ]
+        )
+    return _manifest(rows)
+
+
+def test_manifest_verification_accepts_a_restored_tree(tmp_path: Path) -> None:
+    archive_path, digest = _test_archive(tmp_path)
+    manifest = _manifest_for_source(tmp_path)
+    destination = tmp_path / "restored"
+    _extract_archive(archive_path, destination, digest)
+    try:
+        assert _verify_restored_tree(destination, manifest) == 10
+    finally:
+        manifest.unlink(missing_ok=True)
+
+
+def test_manifest_verification_detects_changed_content(tmp_path: Path) -> None:
+    archive_path, digest = _test_archive(tmp_path)
+    manifest = _manifest_for_source(tmp_path)
+    destination = tmp_path / "restored"
+    _extract_archive(archive_path, destination, digest)
+    (destination / "skyq-range-1m-archive" / "file-00.txt").write_text(
+        "changed\n", encoding="utf-8"
+    )
+    try:
+        with pytest.raises(ManifestError, match="failed verification"):
+            _verify_restored_tree(destination, manifest)
+    finally:
+        manifest.unlink(missing_ok=True)
+
+
+def test_restore_command_verifies_after_extraction(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    archive_path, digest = _test_archive(tmp_path)
+    manifest = _manifest_for_source(tmp_path)
+    archive_dir = tmp_path / "assets"
+    archive_dir.mkdir()
+    part = archive_dir / f"{archive_path.name}.part-001"
+    part.write_bytes(archive_path.read_bytes())
+    (archive_dir / "MANIFEST.csv").write_bytes(manifest.read_bytes())
+    manifest.unlink(missing_ok=True)
+    part_digest = hashlib.sha256(part.read_bytes()).hexdigest()
+    (archive_dir / "SHA256SUMS").write_text(
+        f"{digest}  {archive_path.name}\n"
+        f"{part_digest}  {part.name}\n"
+        f"{hashlib.sha256((archive_dir / 'MANIFEST.csv').read_bytes()).hexdigest()}  MANIFEST.csv\n",
+        encoding="utf-8",
+    )
+    destination = tmp_path / "restored"
+    assert restore.main(
+        ["--archive-dir", str(archive_dir), "--dest", str(destination)]
+    ) == 0
+    assert "verified 10 restored files" in capsys.readouterr().out
+
+
+def test_manifest_verification_after_a_resumed_extraction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_path, digest = _test_archive(tmp_path)
+    manifest = _manifest_for_source(tmp_path)
+    destination = tmp_path / "restored"
+    original_extract = restore._extract_members
+    calls = 0
+
+    def interrupting_extract(
+        archive: tarfile.TarFile,
+        members: list[tarfile.TarInfo],
+        target: Path,
+        on_member=None,
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("simulated interruption")
+        original_extract(archive, members, target, on_member)
+
+    monkeypatch.setattr(restore, "EXTRACT_CHECKPOINT_MEMBERS", 3)
+    monkeypatch.setattr(restore, "_extract_members", interrupting_extract)
+    with pytest.raises(RuntimeError, match="simulated interruption"):
+        _extract_archive(archive_path, destination, digest)
+    monkeypatch.setattr(restore, "_extract_members", original_extract)
+    _extract_archive(archive_path, destination, digest)
+    try:
+        assert _verify_restored_tree(destination, manifest) == 10
+    finally:
+        manifest.unlink(missing_ok=True)
 
 
 def test_extract_reports_final_progress(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

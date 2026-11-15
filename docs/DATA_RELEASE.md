@@ -62,7 +62,9 @@ Extraction is also checkpointed. If the unpack is interrupted, rerun the same
 command and it resumes after the last completed batch of members. The temporary
 checkpoint is `<archive-name>.extract-state.json`; it is removed after a
 successful extraction. Large extracts print member, byte and rate progress at
-five-percent or ten-second intervals.
+five-percent or ten-second intervals. After extraction, including a resumed
+extraction, the helper verifies every restored file's size and SHA-256 against
+`MANIFEST.csv` and fails if any entry is missing or changed.
 
 ### Download separately
 
@@ -112,7 +114,8 @@ The verifier:
 2. concatenates the parts in order;
 3. verifies the full tar SHA-256;
 4. rejects absolute paths, `..` components and unsafe links;
-5. extracts the archive.
+5. extracts the archive;
+6. verifies every restored file against `MANIFEST.csv`.
 
 The result is:
 
@@ -142,7 +145,8 @@ python -m scripts.import_market_data \
 ```
 
 `MANIFEST.csv` contains the size and SHA-256 of every path, so you can verify a
-single extracted file without re-downloading the archive.
+single extracted file without re-downloading the archive. The restore helper
+also performs this verification across the full restored tree automatically.
 
 ## Release audit
 

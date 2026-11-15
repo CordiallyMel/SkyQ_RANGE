@@ -155,7 +155,8 @@ from the release page into one directory.
 ## Verify and restore
 
 The restore command verifies each split part, concatenates them, verifies the
-full tar checksum, rejects unsafe paths, and extracts the archive:
+full tar checksum, rejects unsafe paths, extracts the archive, and checks every
+restored file against `MANIFEST.csv`:
 
 ```bash
 python -m scripts.restore_market_data \\
@@ -182,8 +183,9 @@ Use `--verify-only` to check checksums without extracting.  Use
 ## Per-file verification
 
 `MANIFEST.csv` records the size and SHA-256 of every archived file.  The
-release-level `SHA256SUMS` covers the full tar and every split part.  To check
-the full archive manually:
+restore command verifies this manifest automatically after extraction.  The
+release-level `SHA256SUMS` covers the full tar, the manifest and every split
+part.  To check the full archive manually:
 
 ```bash
 cat {tag}.tar.part-* > {tag}.tar
