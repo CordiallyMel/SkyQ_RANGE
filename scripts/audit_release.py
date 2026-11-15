@@ -290,7 +290,7 @@ def _audit(
     assets = {str(asset.get("name")): asset for asset in release.get("assets", [])}
     part_names = [part["name"] for part in metadata["parts"]]
     required = set(part_names) | {"SHA256SUMS", "MANIFEST.csv", "RESTORE.md", "release.json"}
-    optional = {"catalog.json"}
+    optional = {"catalog.json", "restore-summary.md"}
     missing = sorted(required - set(assets))
     if missing:
         raise AuditError(f"release is missing assets: {', '.join(missing)}")

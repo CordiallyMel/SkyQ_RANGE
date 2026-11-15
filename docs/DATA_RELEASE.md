@@ -200,6 +200,9 @@ The **Verify restored data** workflow is manual: open **Actions**, select the
 workflow and choose **Run workflow**. It downloads the selected release, restores
 it, runs a separate `--verify-restored` pass, and uploads the JSON report as the
 `restored-tree-verification` artifact. Success and failure reports are retained.
+Each run also writes the cache and verification summary to
+`restore-summary.md` on the release, where it can be downloaded without signing
+in, and uploads the same file as the `restore-summary` artifact.
 
 The job caches `release-assets/` using the release tag and committed checksum
 mirror. A later dispatch with the same release restores the parts from cache and
