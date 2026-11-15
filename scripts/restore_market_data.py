@@ -2,7 +2,9 @@
 
 This is intentionally dependency-free.  It reads the release's ``SHA256SUMS``,
 verifies every downloaded part, concatenates them, verifies the full tar,
-rejects unsafe archive members, and extracts the data.
+rejects unsafe archive members, and extracts the data. Interrupted downloads
+resume from a checked ``.download`` partial when the remote asset supports
+HTTP range requests.
 
 Examples::
 
@@ -28,6 +30,7 @@ import shutil
 import sys
 import tarfile
 import time
+from http.client import IncompleteRead
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -156,6 +159,94 @@ def _github_release(repo: str, tag: str, timeout: int = 120) -> dict[str, Any]:
     return release
 
 
+def _partial_paths(destination: Path) -> tuple[Path, Path]:
+    return (
+        destination.with_name(destination.name + ".download"),
+        destination.with_name(destination.name + ".download.json"),
+    )
+
+
+def _read_partial_meta(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _write_partial_meta(path: Path, value: dict[str, Any]) -> None:
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(value), encoding="utf-8")
+    temporary.replace(path)
+
+
+def _remove_partial(partial: Path, meta: Path) -> None:
+    partial.unlink(missing_ok=True)
+    meta.unlink(missing_ok=True)
+
+
+def _partial_state(
+    destination: Path,
+    url: str,
+    expected_sha: str,
+    size: int | None,
+    partial: Path,
+    meta: Path,
+) -> int:
+    """Return a resumable byte offset, or -1 when a complete partial was adopted."""
+    if not partial.is_file():
+        meta.unlink(missing_ok=True)
+        return 0
+    record = _read_partial_meta(meta)
+    if (
+        record.get("url") != url
+        or record.get("expected_sha256") != expected_sha
+        or (isinstance(size, int) and size > 0 and record.get("size") != size)
+    ):
+        _remove_partial(partial, meta)
+        return 0
+    length = partial.stat().st_size
+    if length > (size or length):
+        _remove_partial(partial, meta)
+        return 0
+    if isinstance(size, int) and size > 0 and length == size:
+        if _sha256(partial) == expected_sha:
+            partial.replace(destination)
+            meta.unlink(missing_ok=True)
+            print(f"adopted completed partial {destination.name}", flush=True)
+            return -1
+        _remove_partial(partial, meta)
+        return 0
+    return length
+
+
+def _partial_remaining(
+    destination: Path,
+    url: str,
+    expected_sha: str,
+    size: int,
+) -> int:
+    """Estimate bytes that still need downloading for an interrupted asset."""
+    partial, meta = _partial_paths(destination)
+    if not partial.is_file():
+        return size
+    record = _read_partial_meta(meta)
+    if (
+        record.get("url") != url
+        or record.get("expected_sha256") != expected_sha
+        or record.get("size") != size
+    ):
+        return size
+    length = partial.stat().st_size
+    if length >= size:
+        return 0 if length == size and _sha256(partial) == expected_sha else size
+    return size - length
+
+
+def _content_range_matches(value: str, offset: int) -> bool:
+    return value.strip().lower().startswith(f"bytes {offset}-")
+
+
 def _download_asset(
     asset: dict[str, Any],
     destination: Path,
@@ -172,35 +263,102 @@ def _download_asset(
     if not url:
         raise DownloadError(f"release asset {name} has no download URL")
     token = os.environ.get("GITHUB_TOKEN") or None
-    size = asset.get("size")
+    size = asset.get("size") if isinstance(asset.get("size"), int) else None
     size_text = f" ({_gib(size):.2f} GiB)" if isinstance(size, int) else ""
+    partial, meta = _partial_paths(destination)
     last_error: Exception | None = None
 
     for attempt in range(1, retries + 1):
-        temporary = destination.with_name(destination.name + ".download")
-        temporary.unlink(missing_ok=True)
+        offset = _partial_state(destination, url, expected_sha, size, partial, meta)
+        if offset == -1:
+            return destination
         try:
-            print(f"downloading {name}{size_text} ...", flush=True)
-            request = Request(url, headers=_headers(token))
-            downloaded = 0
-            next_report = 256 * 1024**2
-            with urlopen(request, timeout=timeout) as response, temporary.open("wb") as handle:
-                while chunk := response.read(8 * 1024 * 1024):
-                    handle.write(chunk)
-                    downloaded += len(chunk)
-                    if downloaded >= next_report:
-                        print(f"  {name}: {_gib(downloaded):.2f} GiB", flush=True)
-                        next_report += 256 * 1024**2
-            actual = _sha256(temporary)
+            request_headers = _headers(token)
+            record = _read_partial_meta(meta)
+            if offset:
+                request_headers["Range"] = f"bytes={offset}-"
+                if record.get("etag"):
+                    request_headers["If-Range"] = str(record["etag"])
+                print(
+                    f"resuming {name} at {_gib(offset):.2f} GiB{size_text} ...",
+                    flush=True,
+                )
+            else:
+                print(f"downloading {name}{size_text} ...", flush=True)
+            request = Request(url, headers=request_headers)
+            with urlopen(request, timeout=timeout) as response:
+                status = response.getcode()
+                content_range = response.headers.get("Content-Range", "")
+                if offset and (status != 206 or not _content_range_matches(content_range, offset)):
+                    print(
+                        f"  {name}: server did not honor the resume range; restarting",
+                        flush=True,
+                    )
+                    _remove_partial(partial, meta)
+                    offset = 0
+                    continue
+                current_etag = response.headers.get("ETag")
+                if (
+                    offset
+                    and record.get("etag")
+                    and current_etag
+                    and current_etag != record["etag"]
+                ):
+                    print(f"  {name}: remote ETag changed; restarting", flush=True)
+                    _remove_partial(partial, meta)
+                    offset = 0
+                    continue
+                _write_partial_meta(
+                    meta,
+                    {
+                        "url": url,
+                        "expected_sha256": expected_sha,
+                        "size": size,
+                        "etag": response.headers.get("ETag", ""),
+                        "last_modified": response.headers.get("Last-Modified", ""),
+                    },
+                )
+                downloaded = offset
+                next_report = ((offset // (256 * 1024**2)) + 1) * 256 * 1024**2
+                mode = "ab" if offset else "wb"
+                with partial.open(mode) as handle:
+                    while chunk := response.read(8 * 1024 * 1024):
+                        handle.write(chunk)
+                        downloaded += len(chunk)
+                        if downloaded >= next_report:
+                            print(f"  {name}: {_gib(downloaded):.2f} GiB", flush=True)
+                            next_report += 256 * 1024**2
+            partial_size = partial.stat().st_size
+            if isinstance(size, int) and size > 0 and partial_size < size:
+                last_error = DownloadError(
+                    f"download interrupted for {name}: {partial_size} of {size} bytes"
+                )
+                if attempt < retries:
+                    print(f"resuming {name} ({attempt}/{retries}) ...", flush=True)
+                    time.sleep(attempt * 3)
+                continue
+            actual = _sha256(partial)
             if actual != expected_sha:
                 raise DownloadError(
                     f"checksum mismatch for {name}: expected {expected_sha}, got {actual}"
                 )
-            temporary.replace(destination)
+            if isinstance(size, int) and size > 0 and partial.stat().st_size != size:
+                raise DownloadError(f"size mismatch for {name}: expected {size} bytes")
+            partial.replace(destination)
+            meta.unlink(missing_ok=True)
             return destination
-        except (HTTPError, URLError, OSError, DownloadError) as exc:
-            temporary.unlink(missing_ok=True)
+        except HTTPError as exc:
             last_error = exc
+            if exc.code in (400, 416):
+                _remove_partial(partial, meta)
+            if attempt < retries:
+                print(f"retrying {name} ({attempt}/{retries}) ...", flush=True)
+                time.sleep(attempt * 3)
+        except (URLError, OSError, DownloadError, IncompleteRead) as exc:
+            last_error = exc
+            if isinstance(exc, DownloadError):
+                # A checksum/size failure means the partial bytes are unusable.
+                _remove_partial(partial, meta)
             if attempt < retries:
                 print(f"retrying {name} ({attempt}/{retries}) ...", flush=True)
                 time.sleep(attempt * 3)
@@ -349,8 +507,15 @@ def _download_release(
         expected = part["sha256"]
         if path.is_file() and _sha256(path) == expected:
             print(f"using verified {name}", flush=True)
-        else:
-            missing.append((name, part["bytes"]))
+            continue
+        asset = assets[name]
+        remaining = _partial_remaining(
+            path,
+            str(asset.get("browser_download_url") or ""),
+            expected,
+            int(part["bytes"]),
+        )
+        missing.append((name, remaining))
 
     archive_path = archive_dir / metadata["archive"]
     archive_bytes = 0 if archive_path.is_file() or verify_only else int(metadata["archive_bytes"])

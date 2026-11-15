@@ -53,6 +53,11 @@ Set `GITHUB_TOKEN` to avoid anonymous GitHub API rate limits; the token is used
 only for the API request and is never printed. `--verify-only` downloads and
 checks the parts without reconstructing or extracting.
 
+If a multi-gigabyte download is interrupted, run the same command again. The
+helper resumes from the verified `.download` partial using an HTTP range
+request, after confirming the source URL, asset size, ETag and expected
+SHA-256 still match.
+
 ### Download separately
 
 ```bash

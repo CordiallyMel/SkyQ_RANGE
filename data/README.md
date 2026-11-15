@@ -17,7 +17,8 @@ python -m scripts.restore_market_data \
 
 The helper downloads into `release-assets/`, checks free space, verifies every
 part SHA-256, checks the full tar checksum, and rejects unsafe paths before
-extracting. Set `GITHUB_TOKEN` to avoid anonymous API rate limits. Use
+extracting. Set `GITHUB_TOKEN` to avoid anonymous API rate limits. An
+interrupted download resumes automatically when the command is rerun. Use
 `--verify-only` to download and check without extracting; use
 `--archive-dir release-assets` if you already downloaded the parts. The complete
 inventory, sizes, exclusions and rebuild instructions are in
