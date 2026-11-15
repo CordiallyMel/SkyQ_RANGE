@@ -61,7 +61,8 @@ SHA-256 still match.
 Extraction is also checkpointed. If the unpack is interrupted, rerun the same
 command and it resumes after the last completed batch of members. The temporary
 checkpoint is `<archive-name>.extract-state.json`; it records the selected
-`--rate-window` for diagnostics, and a resumed run prints that recorded window.
+`--rate-window` for diagnostics, and a resumed run prints that recorded window
+and warns when it differs from the active `--rate-window`.
 The checkpoint is removed after a successful extraction. Large extracts print
 member, byte and rate progress at
 five-percent or ten-second intervals, including a rate and estimated time
@@ -208,6 +209,31 @@ report failure therefore does not discard the cached parts. On a cache miss the
 job uses about 19 GB of temporary disk and can take a while on a cold runner, so
 it is not part of the push/PR workflow. The `tag`, destination, rate window and
 report path are configurable when dispatching it.
+
+## Publish refreshed release docs
+
+`RESTORE.md` is generated from `scripts/package_market_data.py`. After changing
+that template, publish the regenerated documentation and checksum assets:
+
+```bash
+GITHUB_TOKEN=... python -m scripts.publish_release_docs
+```
+
+The command regenerates `RESTORE.md` and the release body, preserves the
+archive, part and `MANIFEST.csv` hashes in `data/releases/<tag>.sha256`, and
+replaces only the `RESTORE.md` checksum. The generated notes include the same
+checkpoint rate-window warning as `RESTORE.md`. It uploads the new files under
+temporary asset names, swaps them into place, verifies their GitHub digests,
+and updates the release body and local checksum mirror only after the release
+is confirmed. Commit the updated mirror afterward.
+
+Because the release body is generated, manual edits to it are replaced on the
+next publish. Edit the template in `scripts/publish_release_docs.py` instead.
+
+The token must have `Contents: write` permission for the repository. Set
+`GH_TOKEN` instead if that is how your environment provides credentials. Use
+`--tag` or `--repo` to publish a different release. This command does not
+rebuild the archive.
 
 ## Release audit
 
