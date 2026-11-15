@@ -161,6 +161,11 @@ Subsequent failures add a comment to the existing open issue instead of creating
 a duplicate. Pull-request audits do not open issues because fork tokens are
 read-only.
 
+The scheduled workflow can also send an alert to a Slack-compatible incoming
+webhook. Set the repository secret `RELEASE_AUDIT_WEBHOOK_URL` to enable it;
+when the secret is absent the notification step skips cleanly. Keep the webhook
+URL in GitHub Secrets, not in the repository or workflow file.
+
 It checks the GitHub release against the committed metadata, verifies each
 part's GitHub SHA-256 digest and size, downloads `SHA256SUMS`, `release.json`,
 `MANIFEST.csv` and `RESTORE.md`, and validates the 12,269-row manifest and file

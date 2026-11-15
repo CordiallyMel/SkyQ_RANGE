@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Self
 
+from scripts import notify_release_audit_failure as notifier
 from scripts import report_release_audit_failure as reporter
 
 
@@ -19,8 +20,11 @@ class _FakeResponse:
     def __exit__(self, *_args: object) -> None:
         return None
 
-    def read(self) -> bytes:
+    def read(self, _size: int = -1) -> bytes:
         return self._raw
+
+    def getcode(self) -> int:
+        return 200
 
 
 def _recording_urlopen(
@@ -130,3 +134,50 @@ def test_report_without_a_token_fails(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)
     assert reporter.main(["--repo", "owner/repo"]) == 2
+
+
+def test_notification_is_skipped_without_a_webhook_secret(monkeypatch) -> None:
+    monkeypatch.delenv("RELEASE_AUDIT_WEBHOOK_URL", raising=False)
+    assert notifier.main(["--repo", "owner/repo"]) == 0
+
+
+def test_notification_posts_the_failure_details(
+    tmp_path: Path, monkeypatch
+) -> None:
+    log = tmp_path / "release-audit.log"
+    log.write_text("release audit failed: digest mismatch\n", encoding="utf-8")
+    calls: list[tuple[str, str, dict[str, Any] | None]] = []
+    monkeypatch.setenv(
+        "RELEASE_AUDIT_WEBHOOK_URL", "https://hooks.example.invalid/secret"
+    )
+    monkeypatch.setattr(
+        notifier,
+        "urlopen",
+        _recording_urlopen([{}], calls),
+    )
+    code = notifier.main(
+        [
+            "--tag",
+            "market-data-test",
+            "--repo",
+            "owner/repo",
+            "--log",
+            str(log),
+            "--workflow",
+            "Scheduled release audit",
+            "--event",
+            "schedule",
+            "--commit",
+            "abc123",
+            "--run-url",
+            "https://github.com/owner/repo/actions/runs/1",
+        ]
+    )
+    assert code == 0
+    assert calls[0][0] == "POST"
+    assert calls[0][1] == "https://hooks.example.invalid/secret"
+    payload = calls[0][2]
+    assert payload is not None
+    assert "market-data-test" in payload["text"]
+    assert "digest mismatch" in payload["text"]
+    assert "https://github.com/owner/repo/actions/runs/1" in payload["text"]

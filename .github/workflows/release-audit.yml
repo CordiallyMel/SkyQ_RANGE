@@ -44,3 +44,15 @@ jobs:
           AUDIT_SHA: ${{ github.sha }}
           AUDIT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: python -m scripts.report_release_audit_failure
+      - name: Send release audit notification
+        if: failure()
+        env:
+          RELEASE_AUDIT_WEBHOOK_URL: ${{ secrets.RELEASE_AUDIT_WEBHOOK_URL }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          AUDIT_LOG: release-audit.log
+          AUDIT_TAG: market-data-1m-2026-11-15
+          AUDIT_WORKFLOW: ${{ github.workflow }}
+          AUDIT_EVENT: ${{ github.event_name }}
+          AUDIT_SHA: ${{ github.sha }}
+          AUDIT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python -m scripts.notify_release_audit_failure
