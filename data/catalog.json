@@ -1,0 +1,156 @@
+{
+  "schema": 1,
+  "generated": "2026-11-15",
+  "note": "The raw archive is intentionally not committed to Git. Sizes are approximate and paths are relative to the owner's archive root. Use scripts/stitch_bars.py and scripts/import_market_data.py to create local working copies.",
+  "archive_roots": {
+    "etf_and_futures": "Data_For_Backtests",
+    "futures_and_macro": "SkyQ_Sigma_S/data",
+    "stock_scan_cache": "SkyQ_Scan/data",
+    "options": "Options_Edge/data"
+  },
+  "datasets": [
+    {
+      "id": "etf-spy-1m-24y",
+      "kind": "bars",
+      "timeframe": "1m",
+      "symbols": ["SPY"],
+      "path": "Data_For_Backtests/SPY_1m_24y.parquet",
+      "approx_mb": 85,
+      "range": "1999-09-17 to 2026-11-04",
+      "role": "Canonical SPY research series used for the published 67,271-trade book."
+    },
+    {
+      "id": "etf-qqq-1m-24y",
+      "kind": "bars",
+      "timeframe": "1m",
+      "symbols": ["QQQ"],
+      "path": "Data_For_Backtests/QQQ_1m_24y.parquet",
+      "approx_mb": 77,
+      "range": "1999-09-17 to 2026-11-04",
+      "role": "Canonical QQQ research series; weaker second book."
+    },
+    {
+      "id": "etf-spy-5m-24y",
+      "kind": "bars",
+      "timeframe": "5m",
+      "symbols": ["SPY"],
+      "path": "Data_For_Backtests/SPY_5m_24y.parquet",
+      "approx_mb": 9,
+      "role": "5-minute robustness and legacy comparison."
+    },
+    {
+      "id": "etf-qqq-5m-24y",
+      "kind": "bars",
+      "timeframe": "5m",
+      "symbols": ["QQQ"],
+      "path": "Data_For_Backtests/QQQ_5m_24y.parquet",
+      "approx_mb": 8,
+      "role": "5-minute robustness and legacy comparison."
+    },
+    {
+      "id": "leveraged-etfs",
+      "kind": "bars",
+      "timeframe": "1m",
+      "symbols": ["SSO", "TQQQ"],
+      "path": "Data_For_Backtests/SSO_1m_stitched.parquet; Data_For_Backtests/TQQQ_1m_stitched.parquet",
+      "approx_mb": 90,
+      "role": "Leveraged-ETF extension research; not part of the live RANGE books."
+    },
+    {
+      "id": "futures-1m",
+      "kind": "bars",
+      "timeframe": "1m",
+      "symbols": ["MES", "MNQ", "NQ", "YM", "ES", "ZT", "ZN", "CL", "GC", "RTY"],
+      "path": "SkyQ_Sigma_S/data/{mes,mnq,nq,ym,es,zt,zn,cl,gc}_1m.parquet; Data_For_Backtests/store/*/rty_1m_indicators.parquet",
+      "approx_mb": 390,
+      "role": "Cross-asset falsification and user backtests. YM is included in the published gate."
+    },
+    {
+      "id": "futures-indicators",
+      "kind": "derived_bars",
+      "timeframe": "1m/5m/1d",
+      "symbols": ["MES", "MNQ", "YM", "RTY", "ZT", "ZN"],
+      "path": "SkyQ_Sigma_S/data/*_indicators.parquet",
+      "approx_mb": 700,
+      "role": "Precomputed indicator bundles. The strategy recomputes from OHLCV; these are optional."
+    },
+    {
+      "id": "options-underlying",
+      "kind": "bars",
+      "timeframe": "1m/1d",
+      "symbols": ["SPY", "QQQ"],
+      "path": "Options_Edge/data/underlying/{SPY,QQQ}_{1m,1d}.parquet",
+      "approx_mb": 14,
+      "role": "Underlying bars aligned to the option panels."
+    },
+    {
+      "id": "options-panels",
+      "kind": "option_panels",
+      "timeframe": "1m/5m",
+      "symbols": ["SPY", "QQQ"],
+      "path": "Options_Edge/data/panels/{SPY,QQQ}_{1m,5m}.parquet",
+      "approx_mb": 58,
+      "role": "Option quote/panel data for research. No execution engine is included."
+    },
+    {
+      "id": "options-results",
+      "kind": "research_tables",
+      "timeframe": "trade level",
+      "symbols": ["SPY", "QQQ"],
+      "path": "Options_Edge/data/results/*.csv; Options_Edge/data/trades/*.csv",
+      "approx_mb": 14,
+      "role": "0DTE through 4DTE option studies and trade ledgers. These are evidence, not a live options book."
+    },
+    {
+      "id": "options-contracts",
+      "kind": "metadata",
+      "timeframe": "contract",
+      "symbols": ["MES", "MNQ", "ZT"],
+      "path": "Data_For_Backtests/options_futures/*.csv",
+      "approx_mb": 1,
+      "role": "Contract windows and selection metadata for the options/futures research."
+    },
+    {
+      "id": "databento-stock-cache",
+      "kind": "bars/cache",
+      "timeframe": "1m",
+      "symbols": ["scan universe"],
+      "path": "SkyQ_Scan/data/cache/**/*.parquet; SkyQ_Scan/data/*.dbn.zst",
+      "approx_mb": 2300,
+      "role": "Stock scanner cache and raw Databento archives. Large and not required by the RANGE books."
+    },
+    {
+      "id": "forex-and-crypto",
+      "kind": "bars",
+      "timeframe": "1m",
+      "symbols": ["AUD_USD", "EUR_USD", "GBP_USD", "USD_CAD", "USD_CHF", "USD_JPY", "BTCUSDT", "EURUSD", "JPYUSD"],
+      "path": "Data_For_Backtests/*_1m_2025-01-03_2026-11-10.csv",
+      "approx_mb": 30,
+      "role": "Cross-asset context and custom research; not traded by RANGE."
+    },
+    {
+      "id": "macro-calendar",
+      "kind": "events",
+      "timeframe": "daily",
+      "symbols": [],
+      "path": "SkyQ_Sigma_S/data/macro_event_calendar_wide.csv; SkyQ_Sigma_S/data/macro_event_calendar_long.csv",
+      "approx_mb": 0.1,
+      "role": "Optional event filter input. The canonical book does not use it."
+    },
+    {
+      "id": "published-bundle",
+      "kind": "compact_results",
+      "timeframe": "aggregate/trade sample",
+      "symbols": ["SPY", "QQQ"],
+      "path": "data/published/",
+      "approx_mb": 1,
+      "role": "Committed metrics, equity curve, recent trades and futures gate; enough to render the dashboard and verify the headline numbers."
+    }
+  ],
+  "not_included": [
+    "Raw LSE tick streams and current-day bars (regenerated by the bridge with your key).",
+    "Broker statements, fills, account identifiers and any credentials.",
+    "The full 2.3 GB Databento scanner archive and 1.5 GB derived futures indicator set by default."
+  ],
+  "licensing": "Do not redistribute vendor data unless your vendor agreement permits it. The MIT license covers this repository's code and original notes, not third-party market data."
+}

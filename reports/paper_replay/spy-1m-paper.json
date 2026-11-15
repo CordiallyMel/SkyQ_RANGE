@@ -1,0 +1,36 @@
+{
+  "runner": "spy-1m-paper",
+  "symbol": "SPY",
+  "quantity": 1000,
+  "data": "C:\\Users\\mel12\\Documents\\Python Based ATS\\Data_For_Backtests\\SPY_1m_24y.parquet",
+  "start": "2026-10-01 09:30:00-04:00",
+  "end": "2026-11-04 15:59:00-05:00",
+  "bars": 9750,
+  "journal": "C:\\Users\\mel12\\Documents\\Python Based ATS\\GitHub\\SkyQ_RANGE\\reports\\paper_replay\\spy-1m-paper.csv",
+  "runner_id": "spy-1m-paper",
+  "broker": "simulated",
+  "data_source": "lse-shared-1m",
+  "last_bar_time": "2026-11-04T15:59:00-05:00",
+  "last_price": 766.62,
+  "position": null,
+  "metrics": {
+    "trades": 220,
+    "gross_pnl": 52880.600000001104,
+    "costs": 2520.0,
+    "net_pnl": 50360.600000001104,
+    "wins": 190,
+    "losses": 30,
+    "flat": 0,
+    "gross_profit": 96750.00000000087,
+    "gross_loss": 46389.399999999885,
+    "max_drawdown": -10259.999999999975,
+    "equity_peak": 51860.60000000101,
+    "avg_trade": 228.9118181818232,
+    "win_rate": 86.36363636363636,
+    "profit_factor": 2.085605763385625
+  },
+  "skipped": {
+    "no_channel": 4397,
+    "no_touch": 2382
+  }
+}

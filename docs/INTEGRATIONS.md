@@ -21,7 +21,8 @@ Copy `.env.example` to `.env`. The file is ignored by Git.
 
 | Name | Used by | Notes |
 |---|---|---|
-| `LSE_API_KEY` | LSE archive / optional live feed | vendor data key; not a broker |
+| `LSE_API_KEY` | LSE archive / live feed | vendor data key; not a broker |
+| `LSE_API_KEY_FILE` | LSE bridge convenience | optional path to a key file; keep it ignored |
 | `DATABENTO_API_KEY` | Databento historical data | quote before download |
 | `DATABENTO_DATASET` | Databento | default `EQUS.MINI` |
 | `IB_HOST`, `IB_PORT`, `IB_CLIENT_ID` | IBKR bridge | default `127.0.0.1:4002` |
@@ -90,23 +91,21 @@ log.
 symbol and date and writes an auditable parquet/CSV output. The original fuller
 archive/feed implementation is preserved in `integrations/lse_feed.py`.
 
-### Optional live feed
+### One-minute live path
 
-`integrations/lse_feed.py` contains the WebSocket client and five-minute bar
-builder adapted from the SkyQ Sigma S work. It connects to
-`wss://data-ws.londonstrategicedge.com` with the key header, consumes trade
-ticks and builds bars. The feed is designed to warm up from the archive; it must
+`integrations/lse_feed.py` contains the audited WebSocket client, tick builder
+and reconnect/degraded-state handling. `integrations/lse_one_minute.py` turns
+that path into **one-minute** bars with a separate warmup and live cache. It
+connects to `wss://data-ws.londonstrategicedge.com` with the key header and must
 be started before the regular session because the protocol does not replay the
-morning. The free plan allows one WebSocket connection per key.
+morning.
 
-The copied feed is provided as an integration reference. It has **not** been
-validated against a live vendor account in this public build and it builds
-**5-minute** bars, while RANGE consumes 1-minute bars. It is not wired into
-`src/main.py`; use the archive client for 1-minute history and a validated
-1-minute live adapter (or the IBKR 1-minute bars) for a forward test. Test any
-live adapter with your own key before relying on it.
+Only `scripts.run_lse_bridge` opens the socket. It publishes a warmup parquet, an
+append-only live CSV and an atomic status heartbeat. Any number of runners can
+read those files, which matters on the free plan's one-connection limit. The
+bridge uses `LSE_API_KEY` or `--key-file`; a runner never sees either.
 
-The archive client supports a 1-minute request:
+The archive client supports the same 1-minute request used by the warmup:
 
 ```python
 from datetime import date
@@ -116,15 +115,24 @@ archive = LseArchive.from_env()
 frame = archive.bars("SPY", date(2026, 1, 2), date(2026, 11, 4), timeframe="1m")
 ```
 
+No live LSE account is included with this repository, so the public build cannot
+claim a vendor-verified session. The code path is offline-tested; validate it
+with your own key before relying on it.
+
 ### How a forward test fits together
 
 ```text
-LSE archive ──► warmup bars ──┐
-LSE live socket ──► tick bars ─┴──► RANGE engine ──► IBKR paper / Alpaca paper
+LSE archive ──► 1m warmup ──┐
+LSE live socket ──► 1m bars ─┴──► shared cache ──► RANGE paper runners
 ```
 
-LSE supplies data. IBKR, Alpaca or MT5 supplies execution. LSE cannot place a
-trade. The repository has no live order endpoint and no key of its own.
+The tested execution path is simulated paper (`src.paper_session`). LSE supplies
+data; a broker would supply execution only if you add and review an adapter. The
+repository has no live order endpoint and no key of its own. Options data is
+research-only; there is no options execution engine.
+
+For step-by-step key setup, multi-runner configuration and failure handling, see
+[`FORWARD_TESTING.md`](FORWARD_TESTING.md).
 
 ## Adding a new integration safely
 

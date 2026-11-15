@@ -1,0 +1,19 @@
+{
+  "runner_id": "qqq-1m-paper",
+  "symbol": "QQQ",
+  "broker": "simulated",
+  "data_source": "lse-shared-1m",
+  "quantity": 1000,
+  "sides": "both",
+  "stop_ticks": 150.0,
+  "max_hold_bars": 240,
+  "entry_zone": 0.20,
+  "min_channel_pct": 0.0040,
+  "tp_channel_pct": 0.20,
+  "atr_filter": false,
+  "atr_min": 4.0,
+  "session": "rth",
+  "flat_at": "15:55",
+  "slippage_ticks": 1.0,
+  "poll_seconds": 5.0
+}

@@ -38,6 +38,8 @@ model, so the same numbers are available to SQL analysts and the UI.
 | Configuration | `config/settings.py` | instruments, presets, causal constants, risk caps |
 | Research | `src/indicators.py`, `src/strategy_logic.py`, `src/backtest.py` | bars → channels → trades |
 | Execution | `src/main.py`, `src/broker_connection.py`, `src/order_manager.py` | IBKR monitor / paper order lifecycle |
+| Forward paper | `src/paper_session.py`, `scripts/run_lse_runner.py` | deterministic next-open paper book + journal |
+| LSE data | `integrations/lse_one_minute.py`, `scripts/run_lse_bridge.py` | one WebSocket, 1m warmup/live cache, shared reader |
 | Reporting | `src/models.py`, `src/database.py`, `scripts/init_db.py` | normalized SQL schema and seed |
 | API | `src/api.py`, `src/app_config.py` | read model and masked system status |
 | Control | `src/control.py` | one fixed paper-monitor command, loopback only |
@@ -57,6 +59,7 @@ instruments(symbol PK)
 
 futures_gate(symbol PK, net, profit_factor, verdict, ...)
 audit_events(id PK, created_at, action, detail JSON)
+market_bars(dataset, symbol, ts PK, OHLCV, source)   -- optional, separate
 ```
 
 `sql/001_schema.sql` is the PostgreSQL DDL. `scripts/init_db.py` creates the same
@@ -73,6 +76,7 @@ provides `v_range_metrics` and `v_trade_attribution`.
 | GET | `/api/trades` | paginated closed trades, side filter |
 | GET | `/api/research/futures` | cross-asset gate evidence |
 | GET | `/api/system` | masked database info, packages, control state, audit |
+| GET | `/api/runners` | safe catalog of `configs/runners/*.json` |
 | GET | `/api/integrations` | optional adapters: configured/reachable names only |
 | GET | `/api/control/status` | paper monitor state |
 | POST | `/api/control/start` | start the fixed `src.main` paper monitor |
@@ -89,8 +93,25 @@ The API is read-only by default. The two control routes are disabled unless
 - **Missing broker:** the runner logs and exits; the dashboard remains usable.
 - **Futures symbol in live runner:** rejected before any broker connection.
 - **Control disabled:** returns 403; no process is started.
+- **Stale LSE bridge:** shared source refuses the session; the runner exits 2/3
+  rather than trading a stale or partial tape.
 - **Optional package missing:** integration doctor reports `not ready`; imports
   are lazy so the core stays installable without broker packages.
+
+## Forward data flow
+
+```text
+LSE ticks ──► 1m builder ──► live CSV ─┐
+LSE archive ──► warmup parquet ────────┼──► SharedLseOneMinuteSource
+                     status JSON ─────┘             │
+                                                   ▼
+                                        PaperSession (one per runner)
+                                                   │
+                                     journal CSV + status JSON
+```
+
+The bridge is the only process with a key. The runner never opens a socket and
+never submits a live order.
 
 ## Why one engine, two presets
 

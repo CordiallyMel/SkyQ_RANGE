@@ -10,7 +10,7 @@ small, reviewable reporting bundle is committed:
 | `data/published/range_metrics.csv` | 4 | both books, two windows |
 | `data/published/equity_curve.csv` | 17,816 | daily closed-trade equity |
 | `data/published/recent_trades.csv` | 500 | 250 newest SPY + 250 newest QQQ |
-| `data/published/futures_gate.csv` | 9 | cross-asset rejection |
+| `data/published/futures_gate.csv` | 10 | cross-asset rejection, including YM |
 | `data/published/etf_1000sh_comparison.csv` | small | source comparison |
 | `data/published/provenance.json` | — | source row counts and SHA-256 hashes |
 
@@ -69,7 +69,12 @@ does not consume optional indicator columns.
 The futures gate expects the files listed in `scripts/research_futures.py`
 (`mes_1m.parquet`, `mnq_1m.parquet`, `rty_1m_indicators.parquet`, `zt_1m.parquet`,
 `es_1m.parquet`, `nq_1m.parquet`, `zn_1m.parquet`, `cl_1m.parquet`,
-`gc_1m.parquet`).
+`gc_1m.parquet`, `ym_1m.parquet`).
+
+See [`../data/README.md`](../data/README.md) for stitching chunks and loading a
+large local archive into SQLite/PostgreSQL. The optional `market_bars` table lives
+in `sql/003_market_bars.sql` and is deliberately separate from the reporting
+tables.
 
 ## Database loading
 

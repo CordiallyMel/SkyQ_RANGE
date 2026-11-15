@@ -40,6 +40,18 @@ QQQ is supported by the same engine but is the lower-quality book: profit factor
 presented as equal to SPY. The `2007-2026` window is also available in the
 dashboard and database for a common-start comparison.
 
+## Attribution and sensitivity
+
+The full 1,000-share ledgers are decomposed by side, exit reason, hour, weekday,
+year, channel-width quartile and holding time. A one-factor sweep then changes
+one knob at a time (stop, target, entry zone, hold limit, cooldown, side filter)
+without re-selecting on a test set. The generated tables are in
+[`reports/ATTRIBUTION_AND_SENSITIVITY.md`](reports/ATTRIBUTION_AND_SENSITIVITY.md),
+with the interpretation in [`docs/ATTRIBUTION.md`](docs/ATTRIBUTION.md).
+
+This is diagnostic, not a second out-of-sample result. Read the trade count next
+to every bucket; a high average in a tiny bucket is not an edge.
+
 ## The cross-asset gate
 
 The same entry/exit geometry was run unchanged on every futures series we have,
@@ -57,6 +69,7 @@ commissions and one tick of slippage:
 | ZN | 10-Year T-Note | 1,874 | 0.563 | -$42,095.88 | -$469.89 | negative after costs |
 | CL | WTI Crude | 20,035 | 0.754 | -$327,594.20 | -$3,656.75 | negative after costs |
 | GC | Gold | 6,836 | 0.856 | -$149,074.32 | -$1,664.03 | negative after costs |
+| YM | E-mini Dow | 7,313 | 0.916 | -$59,444.56 | -$729.05 | negative after costs |
 
 ![RANGE futures gate](docs/assets/futures_gate.svg)
 
@@ -98,12 +111,19 @@ src/models.py               SQLAlchemy schema
 src/api.py                  FastAPI read model + safe local control
 src/control.py              fixed paper-monitor start/stop (loopback only)
 integrations/               IBKR, Alpaca paper, MT5, moomoo, Databento, LSE
-scripts/                    research, seed, ledger loader, integration doctor
+integrations/lse_one_minute.py  shared 1m LSE source + live cache
+src/paper_session.py        deterministic paper engine used by forward tests
+scripts/run_lse_bridge.py   the single LSE WebSocket owner
+scripts/run_lse_runner.py   shared-source paper runner
+scripts/run_lse_stack.py    bridge + multiple runners supervisor
+scripts/                    research, seed, ledger loader, data import/stitch
 dashboard/                  React/Vite/TypeScript control center
-sql/                        PostgreSQL DDL and analyst views
+sql/                        PostgreSQL DDL, views, optional market_bars
+configs/runners/            per-runner quantity/side/stop JSON presets
+data/catalog.json           inventory of the external research archive
 data/published/             committed metrics, equity, recent-trade sample
-reports/                    canonical backtest reports and cross-asset gate
-tests/                      strategy and API tests
+reports/                    canonical reports, attribution and sensitivity
+tests/                      strategy, API, LSE 1m and paper tests
 ```
 
 ## Quickstart
@@ -132,6 +152,8 @@ DATABASE_URL=sqlite:///var/skyq_range.db python -m scripts.init_db
 # PostgreSQL (create the database first):
 psql -d skyq_range -f sql/001_schema.sql
 psql -d skyq_range -f sql/002_views.sql
+# optional market-bar table for your own archive:
+psql -d skyq_range -f sql/003_market_bars.sql
 python -m scripts.init_db
 ```
 
@@ -173,9 +195,10 @@ npm run dev
 The Vite proxy sends `/api` to `127.0.0.1:8000`. The API serves the built Vite
 dashboard from `dashboard/dist` when it exists.
 
-The control center has four views: **Overview** (book selection, metrics, equity,
+The control center has five views: **Overview** (book selection, metrics, equity,
 monthly P&L), **Trade tape** (recent closed trades, side filter, pagination),
-**Research** (the complete futures rejection), and **System** (SQL counts,
+**Research** (the complete futures rejection), **Forward** (the shared 1m
+runner presets, commands and execution boundary), and **System** (SQL counts,
 adapter readiness and the paper-only control).
 
 ## Reproducing the books
@@ -217,7 +240,7 @@ directory containing `mes_1m.parquet`, `mnq_1m.parquet`, `rty_1m_indicators.parq
 ```bash
 python -m scripts.research_futures \
   --data-root /path/to/futures/parquet \
-  --symbols MES,MNQ,M2K,ZT,ES,NQ,ZN,CL,GC \
+  --symbols MES,MNQ,M2K,ZT,ES,NQ,ZN,CL,GC,YM \
   --out reports
 ```
 
@@ -240,23 +263,48 @@ without printing a secret.
 ### LSE in plain English
 
 LSE is **London Strategic Edge**, a market-data vendor. Its `LSE_API_KEY` gives
-you archive downloads and, with the live feed module, a tick stream. It does
-**not** place trades. The included `integrations/lse.py` is the archive client
-(`LseArchive`), and `integrations/lse_feed.py` contains the fuller optional live
-feed adapted from the SkyQ Sigma S work. The archive client can request
-`timeframe="1m"` for RANGE research data. The copied live socket builds
-**5-minute** bars by default; it is a reference bridge, not a drop-in 1-minute
-feed for this runner. The feed must be started before 09:30 New York because the
-protocol does not replay a missed morning. The free WebSocket plan allows one
-connection per key.
+you archive downloads and a live tick stream. It does **not** place trades. The
+repository now includes a real **one-minute** path:
 
-A forward test therefore has two parts:
+- `integrations/lse.py` — archive client (`LseArchive`)
+- `integrations/lse_one_minute.py` — 1m warmup, 1m tick builder, durable cache,
+  shared read-only source
+- `scripts/run_lse_bridge.py` — the only process that owns the WebSocket
+- `scripts/run_lse_runner.py` — paper runner reading the shared cache
+- `scripts/run_lse_stack.py` — one bridge per symbol + multiple runners
 
-1. Data: `LSE_API_KEY` plus `LseArchive` (1-minute history) or a validated
-   1-minute live adapter. The included live feed is 5-minute and is not wired
-   into `src/main.py`.
-2. Execution: a broker adapter. The repository's live runner is IBKR paper by
-default. It never routes orders through LSE.
+Start the bridge before 09:30 New York; LSE cannot replay a missed morning. The
+free WebSocket plan allows one connection per key, so run one symbol at a time
+unless your plan permits more. The bridge writes a heartbeat; a stale or degraded
+session is refused by the runner by default.
+
+The tested execution path is **simulated paper**. Alpaca, IBKR, MT5 and moomoo
+adapters remain separate and are documented with their honest limits; the LSE
+runner does not silently send live orders. Options data is research-only and has
+no execution engine. See [`docs/FORWARD_TESTING.md`](docs/FORWARD_TESTING.md)
+for the complete key setup, multi-runner and failure-mode guide.
+
+A forward test therefore has two independent choices:
+
+1. Data: the shared LSE 1-minute bridge, or your own completed 1-minute bars via
+   `scripts.paper_replay`.
+2. Execution: simulated paper by default; a reviewed broker adapter if you add
+   one. LSE never routes orders.
+
+### Forward runner quickstart
+
+```bash
+python -m scripts.run_lse_bridge --symbol SPY \
+  --key-file "$HOME/.config/lse/api-key"
+
+# another terminal
+python -m scripts.run_lse_runner \
+  --config configs/runners/spy-1m-paper.json
+```
+
+Edit `configs/runners/*.json` for quantity, sides, stop, hold limit, flat time and
+poll interval. The **Forward** dashboard page lists those presets and the exact
+bridge/runner commands. Full setup: [`docs/FORWARD_TESTING.md`](docs/FORWARD_TESTING.md).
 
 ### Databento
 
@@ -285,6 +333,13 @@ The repository's control API can start a **fixed paper monitor** only; it has no
 order endpoint and is disabled unless `SKYQ_CONTROL_ENABLED=true`.
 
 ## SQL model
+
+The optional `market_bars` table (`sql/003_market_bars.sql`) is for
+your own multi-gigabyte OHLCV archive; it is separate from the small reporting
+schema. `scripts/import_market_data.py` loads parquet/CSV into SQLite or
+PostgreSQL, and `scripts/stitch_bars.py` joins vendor date chunks. The archive
+inventory is in [`data/catalog.json`](data/catalog.json) and the workflow is in
+[`data/README.md`](data/README.md).
 
 The reporting schema is intentionally normalized:
 

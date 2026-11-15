@@ -7,6 +7,7 @@ payloads, or arbitrary process output.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import defaultdict
 from datetime import datetime
@@ -34,6 +35,7 @@ from src.models import (
 )
 
 log = logging.getLogger("skyq.range.api")
+ROOT = Path(__file__).resolve().parents[1]
 settings = AppSettings.from_env()
 engine = make_engine(settings.database_url)
 init_db(engine)
@@ -315,6 +317,84 @@ def system(session: Session = Depends(get_session)) -> dict:
             for event in session.scalars(
                 select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(10)
             )
+        ],
+    }
+
+
+@app.get("/api/runners")
+def runner_configs() -> dict:
+    """Read the checked-in runner presets without exposing credentials."""
+    config_dir = ROOT / "configs" / "runners"
+    runners = []
+    if config_dir.is_dir():
+        for path in sorted(config_dir.glob("*.json")):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                runners.append(
+                    {
+                        "file": path.relative_to(ROOT).as_posix(),
+                        "valid": False,
+                        "error": str(exc),
+                    }
+                )
+                continue
+            runners.append(
+                {
+                    "file": path.relative_to(ROOT).as_posix(),
+                    "valid": True,
+                    "runner_id": payload.get("runner_id"),
+                    "symbol": payload.get("symbol"),
+                    "broker": payload.get("broker"),
+                    "data_source": payload.get("data_source"),
+                    "quantity": payload.get("quantity"),
+                    "sides": payload.get("sides"),
+                    "stop_ticks": payload.get("stop_ticks"),
+                    "max_hold_bars": payload.get("max_hold_bars"),
+                    "flat_at": payload.get("flat_at"),
+                    "poll_seconds": payload.get("poll_seconds"),
+                }
+            )
+    return {
+        "config_dir": "configs/runners",
+        "runners": runners,
+        "data_sources": [
+            {
+                "name": "lse-shared-1m",
+                "description": "Shared one-minute LSE bridge; no key in the runner.",
+            }
+        ],
+        "brokers": [
+            {
+                "name": "simulated",
+                "required_env": [],
+                "implemented": True,
+                "note": "Deterministic paper engine; the tested public path.",
+            },
+            {
+                "name": "alpaca",
+                "required_env": ["ALPACA_API_KEY", "ALPACA_SECRET_KEY"],
+                "implemented": False,
+                "note": "Paper adapter exists; the LSE runner wiring is not enabled here.",
+            },
+            {
+                "name": "ibkr",
+                "required_env": ["IB_HOST", "IB_PORT", "IB_CLIENT_ID"],
+                "implemented": False,
+                "note": "Existing src.main paper bridge; not wired to the 1m LSE source.",
+            },
+            {
+                "name": "mt5",
+                "required_env": ["MT5_PATH", "MT5_LOGIN", "MT5_PASSWORD", "MT5_SERVER"],
+                "implemented": False,
+                "note": "Account/quote adapter only; no order submission in this public runner.",
+            },
+            {
+                "name": "moomoo",
+                "required_env": ["MOOMOO_HOST", "MOOMOO_PORT"],
+                "implemented": False,
+                "note": "Read-only OpenD quotes; never submits orders.",
+            },
         ],
     }
 
