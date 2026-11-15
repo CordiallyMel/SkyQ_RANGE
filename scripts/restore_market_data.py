@@ -641,6 +641,26 @@ def _read_extract_state(
     return completed
 
 
+def _checkpoint_rate_window(state_path: Path) -> float | None:
+    """Return a valid rate window recorded by the checkpoint, if present."""
+    try:
+        value = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(value, dict):
+        return None
+    window = value.get("rate_window")
+    if isinstance(window, bool) or not isinstance(window, (int, float)):
+        return None
+    try:
+        window_value = float(window)
+    except (OverflowError, ValueError):
+        return None
+    if not math.isfinite(window_value) or window_value <= 0:
+        return None
+    return window_value
+
+
 def _write_extract_state(
     state_path: Path,
     archive_sha: str,
@@ -868,9 +888,15 @@ def _extract_archive(
             window_seconds=rate_window,
         )
         if completed:
+            checkpoint_window = _checkpoint_rate_window(state_path)
+            window_text = (
+                f" (checkpoint rate window: {checkpoint_window:g}s)"
+                if checkpoint_window is not None
+                else ""
+            )
             print(
                 f"resuming extraction at member {completed:,}/{len(members):,} "
-                f"into {destination} ...",
+                f"into {destination}{window_text} ...",
                 flush=True,
             )
         else:

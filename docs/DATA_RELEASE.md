@@ -61,8 +61,9 @@ SHA-256 still match.
 Extraction is also checkpointed. If the unpack is interrupted, rerun the same
 command and it resumes after the last completed batch of members. The temporary
 checkpoint is `<archive-name>.extract-state.json`; it records the selected
-`--rate-window` for diagnostics and is removed after a successful extraction.
-Large extracts print member, byte and rate progress at
+`--rate-window` for diagnostics, and a resumed run prints that recorded window.
+The checkpoint is removed after a successful extraction. Large extracts print
+member, byte and rate progress at
 five-percent or ten-second intervals, including a rate and estimated time
 remaining based on a 30-second window. Set `--rate-window SECONDS` to change
 that smoothing window. After extraction, including a resumed extraction, the

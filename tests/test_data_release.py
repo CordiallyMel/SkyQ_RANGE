@@ -636,6 +636,41 @@ def test_extract_checkpoint_records_rate_window(
     assert state["rate_window"] == 12.5
 
 
+def test_resume_reports_checkpoint_rate_window(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    archive_path, digest = _test_archive(tmp_path)
+    destination = tmp_path / "restored"
+    original_extract = restore._extract_members
+    calls = 0
+
+    def interrupting_extract(
+        archive: tarfile.TarFile,
+        members: list[tarfile.TarInfo],
+        target: Path,
+        on_member=None,
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("simulated interruption")
+        original_extract(archive, members, target, on_member)
+
+    monkeypatch.setattr(restore, "EXTRACT_CHECKPOINT_MEMBERS", 3)
+    monkeypatch.setattr(restore, "_extract_members", interrupting_extract)
+    with pytest.raises(RuntimeError, match="simulated interruption"):
+        _extract_archive(archive_path, destination, digest, rate_window=12.5)
+    capsys.readouterr()
+
+    monkeypatch.setattr(restore, "_extract_members", original_extract)
+    _extract_archive(archive_path, destination, digest, rate_window=30.0)
+    output = capsys.readouterr().out
+    assert "resuming extraction at member 3/10" in output
+    assert "checkpoint rate window: 12.5s" in output
+
+
 def test_extract_reports_final_progress(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     archive_path, digest = _test_archive(tmp_path, count=5)
     destination = tmp_path / "restored"
