@@ -141,22 +141,33 @@ This archive contains the local one-minute research data selected by
 1-minute indicators, forex/crypto 1-minute context, Databento stock-scanner
 minute data, and option 1-minute panels/underlying/raw data.
 
-## Download
+## Download and restore in one command
 
-From a clone of `{owner}/{repo}` with the GitHub CLI:
+From a clone of `{owner}/{repo}`:
+
+```bash
+python -m scripts.restore_market_data \\
+  --download \\
+  --dest data/restored
+```
+
+This downloads the release assets into `release-assets/`, verifies every
+SHA-256, reconstructs the full tar, checks the full-archive hash, rejects unsafe
+paths, extracts the archive, and checks every restored file against
+`MANIFEST.csv`. Set `GITHUB_TOKEN` to avoid anonymous GitHub API rate limits;
+the token is used only for the API request. Interrupted downloads and
+extractions resume when the command is rerun.
+
+### Download separately
+
+If you already have the assets, download them with the GitHub CLI:
 
 ```bash
 gh release download {tag} --repo {owner}/{repo} --dir release-assets
 ```
 
 Or download every `*.part-*`, `SHA256SUMS`, `MANIFEST.csv` and `RESTORE.md`
-from the release page into one directory.
-
-## Verify and restore
-
-The restore command verifies each split part, concatenates them, verifies the
-full tar checksum, rejects unsafe paths, extracts the archive, and checks every
-restored file against `MANIFEST.csv`:
+from the release page into one directory. Then restore from that directory:
 
 ```bash
 python -m scripts.restore_market_data \\
