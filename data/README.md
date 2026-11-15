@@ -2,8 +2,26 @@
 
 This repository ships the **code, compact published results, and a catalog** of
 the research archive. It does not commit the raw multi-gigabyte market files:
-GitHub is not a market-data warehouse, vendor licences differ, and a 5 GB
-history would make a normal `git clone` unusable.
+GitHub is not a market-data warehouse, vendor licences differ, and the
+multi-gigabyte history would make a normal `git clone` unusable.
+
+## Download the full 1-minute archive
+
+The one-minute archive is published as split GitHub release assets, not as a Git
+commit. Download the release, verify every part and restore it with:
+
+```bash
+gh release download market-data-1m-2026-11-15 \
+  --repo CordiallyMel/SkyQ_RANGE --dir release-assets
+python -m scripts.restore_market_data \
+  --archive-dir release-assets --dest data/restored
+```
+
+The verifier checks part SHA-256 values, checks the full tar checksum, and
+rejects unsafe paths before extracting. The complete inventory, sizes, exclusions
+and rebuild instructions are in [`../docs/DATA_RELEASE.md`](../docs/DATA_RELEASE.md).
+The release includes canonical ETF bars, futures and 1m indicator bundles,
+Databento stock-scanner data, forex/crypto 1m context and option 1m data.
 
 The archive inventory is in [`catalog.json`](catalog.json). It covers:
 

@@ -128,5 +128,8 @@ data.
 - The futures gate is generated from the same strategy code with a long-only,
   1-contract baseline and contract-specific commissions.
 
+The full one-minute archive is distributed as split release assets with a
+SHA-256 manifest and verifier. See [`DATA_RELEASE.md`](DATA_RELEASE.md).
+
 Data availability is not a pass. A missing futures file produces a `not run`
 row in the gate; it is never silently treated as positive.
