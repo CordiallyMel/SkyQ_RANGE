@@ -124,4 +124,4 @@ jobs:
             echo "| --- | --- |"
             echo "| Release-parts cache | $cache_status |"
             echo "| Final verification | ${VERIFY_OUTCOME:-not run} |"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
