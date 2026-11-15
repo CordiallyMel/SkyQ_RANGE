@@ -23,6 +23,10 @@ Examples::
 
     # Verify an existing restored tree without re-downloading or extracting.
     python -m scripts.restore_market_data --verify-restored --dest data/restored
+
+    # Write a machine-readable verification result.
+    python -m scripts.restore_market_data \
+      --verify-restored --dest data/restored --report verification.json
 """
 
 from __future__ import annotations
@@ -101,6 +105,12 @@ def _parser() -> argparse.ArgumentParser:
             "verify an existing restored tree against MANIFEST.csv without "
             "downloading, concatenating or extracting"
         ),
+    )
+    parser.add_argument(
+        "--report",
+        default=None,
+        metavar="PATH",
+        help="write a JSON verification report to PATH (requires --verify-restored)",
     )
     parser.add_argument(
         "--remove-archive",
@@ -875,13 +885,54 @@ def _valid_sha256(value: str) -> bool:
     return len(value) == 64 and all(character in "0123456789abcdefABCDEF" for character in value)
 
 
-def _verify_restored_tree(destination: Path, manifest_path: Path) -> int:
+def _new_verification_report(
+    destination: Path, manifest_path: Path
+) -> dict[str, Any]:
+    return {
+        "schema": 1,
+        "command": "verify-restored",
+        "status": "failed",
+        "destination": str(destination),
+        "manifest": str(manifest_path),
+        "entries": 0,
+        "verified": 0,
+        "checked_bytes": 0,
+        "error_count": 0,
+        "errors": [],
+        "message": "",
+    }
+
+
+def _write_verification_report(path: Path, report: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
+def _verify_restored_tree(
+    destination: Path,
+    manifest_path: Path,
+    report: dict[str, Any] | None = None,
+) -> int:
     """Check every MANIFEST row against the restored tree."""
     if not manifest_path.is_file():
         raise ManifestError(f"missing manifest: {manifest_path}")
 
+    if report is not None:
+        report.update(
+            {
+                "destination": str(destination),
+                "manifest": str(manifest_path),
+            }
+        )
+
     destination_root = destination.resolve()
-    errors: list[str] = []
+    error_messages: list[str] = []
+    error_records: list[dict[str, Any]] = []
     error_count = 0
     seen: set[str] = set()
     checked = 0
@@ -890,11 +941,30 @@ def _verify_restored_tree(destination: Path, manifest_path: Path) -> int:
     started = time.monotonic()
     last_report = started
 
-    def record_error(message: str) -> None:
+    def record_error(
+        message: str,
+        *,
+        kind: str = "verification_error",
+        path: str | None = None,
+        line: int | None = None,
+        expected: Any = None,
+        actual: Any = None,
+    ) -> None:
         nonlocal error_count
         error_count += 1
-        if len(errors) < 20:
-            errors.append(message)
+        if len(error_messages) < 20:
+            error_messages.append(message)
+        detail: dict[str, Any] = {"kind": kind, "message": message}
+        if path is not None:
+            detail["path"] = path
+        if line is not None:
+            detail["line"] = line
+        if expected is not None:
+            detail["expected"] = expected
+        if actual is not None:
+            detail["actual"] = actual
+        if report is not None:
+            error_records.append(detail)
 
     print(f"verifying restored files against {manifest_path.name} ...", flush=True)
     with manifest_path.open("r", encoding="utf-8", newline="") as handle:
@@ -909,22 +979,43 @@ def _verify_restored_tree(destination: Path, manifest_path: Path) -> int:
         for line_number, row in enumerate(reader, start=2):
             total_rows += 1
             if len(row) != 4:
-                record_error(f"row {line_number}: expected 4 fields, got {len(row)}")
+                record_error(
+                    f"row {line_number}: expected 4 fields, got {len(row)}",
+                    kind="malformed_row",
+                    line=line_number,
+                )
                 continue
             archive_path, _source_label, size_text, digest = row
             try:
                 size = int(size_text)
             except ValueError:
-                record_error(f"row {line_number}: invalid size {size_text!r}")
+                record_error(
+                    f"row {line_number}: invalid size {size_text!r}",
+                    kind="malformed_row",
+                    line=line_number,
+                )
                 continue
             if size < 0:
-                record_error(f"row {line_number}: negative size")
+                record_error(
+                    f"row {line_number}: negative size",
+                    kind="malformed_row",
+                    line=line_number,
+                )
                 continue
             if not _valid_sha256(digest):
-                record_error(f"row {line_number}: invalid SHA-256")
+                record_error(
+                    f"row {line_number}: invalid SHA-256",
+                    kind="malformed_row",
+                    line=line_number,
+                )
                 continue
             if archive_path in seen:
-                record_error(f"row {line_number}: duplicate path {archive_path!r}")
+                record_error(
+                    f"row {line_number}: duplicate path {archive_path!r}",
+                    kind="duplicate_path",
+                    path=archive_path,
+                    line=line_number,
+                )
                 continue
             seen.add(archive_path)
 
@@ -934,38 +1025,69 @@ def _verify_restored_tree(destination: Path, manifest_path: Path) -> int:
                 or pure_path.is_absolute()
                 or ".." in pure_path.parts
             ):
-                record_error(f"row {line_number}: unsafe path {archive_path!r}")
+                record_error(
+                    f"row {line_number}: unsafe path {archive_path!r}",
+                    kind="unsafe_path",
+                    path=archive_path,
+                    line=line_number,
+                )
                 continue
 
             path = destination.joinpath(*pure_path.parts)
             try:
                 path.resolve(strict=False).relative_to(destination_root)
             except (OSError, ValueError):
-                record_error(f"{archive_path}: path escapes the restore directory")
+                record_error(
+                    f"{archive_path}: path escapes the restore directory",
+                    kind="path_escape",
+                    path=archive_path,
+                )
                 continue
             if path.is_symlink():
-                record_error(f"{archive_path}: expected a regular file, found a symlink")
+                record_error(
+                    f"{archive_path}: expected a regular file, found a symlink",
+                    kind="symlink",
+                    path=archive_path,
+                )
                 continue
             try:
                 if not path.is_file():
-                    record_error(f"{archive_path}: missing")
+                    record_error(
+                        f"{archive_path}: missing",
+                        kind="missing",
+                        path=archive_path,
+                    )
                     continue
                 actual_size = path.stat().st_size
                 if actual_size != size:
                     record_error(
-                        f"{archive_path}: size mismatch (expected {size:,}, got {actual_size:,})"
+                        f"{archive_path}: size mismatch (expected {size:,}, got {actual_size:,})",
+                        kind="size_mismatch",
+                        path=archive_path,
+                        expected=size,
+                        actual=actual_size,
                     )
                     continue
                 actual_digest = _sha256(path)
             except OSError as exc:
-                record_error(f"{archive_path}: cannot read: {exc}")
+                record_error(
+                    f"{archive_path}: cannot read: {exc}",
+                    kind="read_error",
+                    path=archive_path,
+                )
                 continue
 
+            if actual_digest != digest.lower():
+                record_error(
+                    f"{archive_path}: SHA-256 mismatch",
+                    kind="sha256_mismatch",
+                    path=archive_path,
+                    expected=digest.lower(),
+                    actual=actual_digest,
+                )
+                continue
             checked += 1
             checked_bytes += actual_size
-            if actual_digest != digest.lower():
-                record_error(f"{archive_path}: SHA-256 mismatch")
-                continue
             now = time.monotonic()
             if now - last_report >= 10 or checked % 1000 == 0:
                 print(
@@ -975,11 +1097,24 @@ def _verify_restored_tree(destination: Path, manifest_path: Path) -> int:
                 )
                 last_report = now
 
+    if report is not None:
+        report.update(
+            {
+                "entries": total_rows,
+                "verified": checked,
+                "checked_bytes": checked_bytes,
+                "error_count": error_count,
+                "errors": error_records,
+            }
+        )
     if error_count:
-        for message in errors:
+        for message in error_messages:
             print(f"  {message}", file=sys.stderr)
-        if error_count > len(errors):
-            print(f"  ... and {error_count - len(errors):,} more errors", file=sys.stderr)
+        if error_count > len(error_messages):
+            print(
+                f"  ... and {error_count - len(error_messages):,} more errors",
+                file=sys.stderr,
+            )
         raise ManifestError(
             f"{error_count:,} of {total_rows:,} manifest entries failed verification"
         )
@@ -991,15 +1126,38 @@ def _verify_restored_tree(destination: Path, manifest_path: Path) -> int:
     return total_rows
 
 
-def _verify_existing_restore(destination: Path, archive_dir: Path | None) -> int:
+def _verify_existing_restore(
+    destination: Path,
+    archive_dir: Path | None,
+    report_path: Path | None = None,
+) -> int:
     """Verify an already extracted tree without touching the release parts."""
     if archive_dir is None:
         manifest_path = destination / ARCHIVE_PREFIX / "MANIFEST.csv"
     else:
         manifest_path = archive_dir / "MANIFEST.csv"
+    report = _new_verification_report(destination, manifest_path)
+
+    def finish(status: str, message: str, exit_code: int) -> int:
+        report["status"] = status
+        report["message"] = message
+        if report_path is None:
+            return exit_code
+        try:
+            _write_verification_report(report_path, report)
+        except OSError as exc:
+            print(f"could not write report {report_path}: {exc}", file=sys.stderr)
+            return 1
+        return exit_code
+
     if not manifest_path.is_file():
-        print(f"missing {manifest_path}", file=sys.stderr)
-        return 2
+        message = f"missing {manifest_path}"
+        print(message, file=sys.stderr)
+        report["error_count"] = 1
+        report["errors"] = [
+            {"kind": "manifest_missing", "message": message, "path": str(manifest_path)}
+        ]
+        return finish("failed", message, 2)
     if archive_dir is not None:
         sums_path = archive_dir / "SHA256SUMS"
         if sums_path.is_file():
@@ -1008,22 +1166,45 @@ def _verify_existing_restore(destination: Path, archive_dir: Path | None) -> int
                 print("verifying MANIFEST.csv ...", flush=True)
                 actual = _sha256(manifest_path)
                 if actual != expected:
-                    print("MANIFEST.csv checksum mismatch", file=sys.stderr)
+                    message = "MANIFEST.csv checksum mismatch"
+                    print(message, file=sys.stderr)
                     print(f"  expected {expected}", file=sys.stderr)
                     print(f"  actual   {actual}", file=sys.stderr)
-                    return 1
+                    report["error_count"] = 1
+                    report["errors"] = [
+                        {
+                            "kind": "manifest_checksum_mismatch",
+                            "message": message,
+                            "path": str(manifest_path),
+                            "expected": expected,
+                            "actual": actual,
+                        }
+                    ]
+                    return finish("failed", message, 1)
     try:
-        _verify_restored_tree(destination, manifest_path)
+        _verify_restored_tree(destination, manifest_path, report)
     except (ManifestError, OSError) as exc:
-        print(f"restored tree verification failed: {exc}", file=sys.stderr)
-        return 1
-    return 0
+        message = f"restored tree verification failed: {exc}"
+        print(message, file=sys.stderr)
+        if report["error_count"] == 0:
+            report["error_count"] = 1
+            report["errors"] = [
+                {"kind": "verification_error", "message": message}
+            ]
+        return finish("failed", message, 1)
+    return finish(
+        "passed",
+        f"verified {report['verified']:,} restored files against MANIFEST.csv",
+        0,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     destination = Path(args.dest).expanduser().resolve()
+    if args.report and not args.verify_restored:
+        parser.error("--report requires --verify-restored")
     if args.verify_restored:
         if args.download:
             parser.error("--download cannot be used with --verify-restored")
@@ -1032,7 +1213,10 @@ def main(argv: list[str] | None = None) -> int:
             if args.archive_dir
             else None
         )
-        return _verify_existing_restore(destination, archive_dir)
+        report_path = (
+            Path(args.report).expanduser().resolve() if args.report else None
+        )
+        return _verify_existing_restore(destination, archive_dir, report_path)
 
     if args.archive_dir:
         archive_dir = Path(args.archive_dir).expanduser().resolve()

@@ -175,6 +175,17 @@ python -m scripts.restore_market_data \
 The command exits non-zero if any manifest entry is missing, the wrong size or
 digest, or has an unsafe path.
 
+For CI or dashboards, add `--report PATH` to write a JSON report. The report is
+written on success and failure and records the destination, manifest, entry and
+verified counts, checked bytes, status, message, and structured error details:
+
+```bash
+python -m scripts.restore_market_data \
+  --verify-restored \
+  --dest data/restored \
+  --report verification.json
+```
+
 ## Release audit
 
 The CI **Release audit** job runs:

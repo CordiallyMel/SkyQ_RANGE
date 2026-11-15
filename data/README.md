@@ -24,7 +24,8 @@ files are checked against `MANIFEST.csv` afterward. Use
 `--verify-only` to download and check without extracting; use
 `--archive-dir release-assets` if you already downloaded the parts. To re-check
 an existing restored tree without re-downloading or extracting, use
-`--verify-restored --dest data/restored`. The complete
+`--verify-restored --dest data/restored`; add `--report verification.json` for
+a machine-readable result. The complete
 inventory, sizes, exclusions and rebuild instructions are in
 [`../docs/DATA_RELEASE.md`](../docs/DATA_RELEASE.md).
 The release includes canonical ETF bars, futures and 1m indicator bundles,

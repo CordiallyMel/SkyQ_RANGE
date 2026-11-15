@@ -405,6 +405,92 @@ def test_verify_restored_mode_uses_existing_tree_manifest(
     assert "verified 10 restored files" in capsys.readouterr().out
 
 
+def test_verify_restored_report_records_success(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    archive_path, digest = _test_archive(tmp_path)
+    manifest = _manifest_for_source(tmp_path)
+    destination = tmp_path / "restored"
+    _extract_archive(archive_path, destination, digest)
+    (destination / "skyq-range-1m-archive" / "MANIFEST.csv").write_bytes(
+        manifest.read_bytes()
+    )
+    report_path = tmp_path / "verification.json"
+    manifest.unlink(missing_ok=True)
+
+    assert restore.main(
+        [
+            "--verify-restored",
+            "--dest",
+            str(destination),
+            "--report",
+            str(report_path),
+        ]
+    ) == 0
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["schema"] == 1
+    assert report["command"] == "verify-restored"
+    assert report["status"] == "passed"
+    assert report["entries"] == 10
+    assert report["verified"] == 10
+    assert report["checked_bytes"] > 0
+    assert report["error_count"] == 0
+    assert report["errors"] == []
+    assert "verified 10 restored files" in capsys.readouterr().out
+
+
+def test_verify_restored_report_records_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    archive_path, digest = _test_archive(tmp_path)
+    manifest = _manifest_for_source(tmp_path)
+    destination = tmp_path / "restored"
+    _extract_archive(archive_path, destination, digest)
+    (destination / "skyq-range-1m-archive" / "MANIFEST.csv").write_bytes(
+        manifest.read_bytes()
+    )
+    (destination / "skyq-range-1m-archive" / "file-00.txt").write_text(
+        "member X\n", encoding="utf-8"
+    )
+    report_path = tmp_path / "verification.json"
+    manifest.unlink(missing_ok=True)
+
+    assert restore.main(
+        [
+            "--verify-restored",
+            "--dest",
+            str(destination),
+            "--report",
+            str(report_path),
+        ]
+    ) == 1
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["status"] == "failed"
+    assert report["entries"] == 10
+    assert report["verified"] == 9
+    assert report["error_count"] == 1
+    assert report["errors"][0]["kind"] == "sha256_mismatch"
+    assert report["errors"][0]["path"].endswith("file-00.txt")
+    assert "restored tree verification failed" in capsys.readouterr().err
+
+
+def test_verify_restored_report_records_missing_manifest(tmp_path: Path) -> None:
+    report_path = tmp_path / "verification.json"
+    assert restore.main(
+        [
+            "--verify-restored",
+            "--dest",
+            str(tmp_path / "missing"),
+            "--report",
+            str(report_path),
+        ]
+    ) == 2
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["status"] == "failed"
+    assert report["error_count"] == 1
+    assert report["errors"][0]["kind"] == "manifest_missing"
+
+
 def test_verify_restored_mode_uses_archive_dir_manifest(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
