@@ -33,14 +33,38 @@ bytes repeatedly.
 It does **not** include credentials, broker statements, LSE live ticks, Python
 caches/logs, or a duplicate of the small published dashboard bundle.
 
-## Download and verify
+## Download and restore in one command
 
-### GitHub CLI
+From a clone of the repository:
 
 ```bash
+python -m scripts.restore_market_data \
+  --download \
+  --dest data/restored
+```
+
+This downloads the release assets into `release-assets/`, verifies every
+SHA-256, reconstructs the tar, checks the full-archive hash, and extracts the
+data. It checks free space before downloading and before extraction. The peak
+working set is roughly **19 GB**: downloaded parts, reconstructed tar, and the
+unpacked tree.
+
+Set `GITHUB_TOKEN` to avoid anonymous GitHub API rate limits; the token is used
+only for the API request and is never printed. `--verify-only` downloads and
+checks the parts without reconstructing or extracting.
+
+### Download separately
+
+```bash
+python -m scripts.restore_market_data --download --verify-only
+
+# Or use GitHub CLI and verify the existing directory later:
 gh release download market-data-1m-2026-11-15 \
   --repo CordiallyMel/SkyQ_RANGE \
   --dir release-assets
+python -m scripts.restore_market_data \
+  --archive-dir release-assets \
+  --verify-only
 ```
 
 ### Browser
@@ -108,6 +132,29 @@ python -m scripts.import_market_data \
 
 `MANIFEST.csv` contains the size and SHA-256 of every path, so you can verify a
 single extracted file without re-downloading the archive.
+
+## Release audit
+
+The CI **Release audit** job runs:
+
+```bash
+python -m scripts.audit_release
+```
+
+It checks the GitHub release against the committed metadata, verifies each
+part's GitHub SHA-256 digest and size, downloads `SHA256SUMS`, `release.json`,
+`MANIFEST.csv` and `RESTORE.md`, and validates the 12,269-row manifest and file
+counts. It deliberately does **not** download the 5.4 GB of parts on every CI
+run; GitHub's asset digest covers the uploaded bytes.
+
+For a full local content audit, which downloads and hashes every part:
+
+```bash
+python -m scripts.audit_release --download-parts
+```
+
+That full audit needs the same multi-gigabyte bandwidth and disk headroom as a
+normal download.
 
 ## Rebuild the package
 

@@ -26,6 +26,20 @@ jobs:
       - name: Test
         run: pytest -q
 
+  release-audit:
+    name: Release audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Audit published data release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python -m scripts.audit_release
+
   dashboard:
     name: Dashboard build
     runs-on: ubuntu-latest

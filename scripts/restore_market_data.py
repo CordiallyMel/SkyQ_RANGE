@@ -6,34 +6,65 @@ rejects unsafe archive members, and extracts the data.
 
 Examples::
 
-    # Check downloads without extracting 6.8 GB.
-    python -m scripts.restore_market_data --archive-dir release-assets --verify-only
+    # Download the release, then verify it without extracting.
+    python -m scripts.restore_market_data --download --verify-only
 
-    # Restore under data/restored/skyq-range-1m-archive/.
+    # Download and restore under data/restored/skyq-range-1m-archive/.
     python -m scripts.restore_market_data \
-      --archive-dir release-assets --dest data/restored
+      --download --dest data/restored
+
+    # Verify a previously downloaded directory.
+    python -m scripts.restore_market_data \
+      --archive-dir release-assets --verify-only
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import shutil
 import sys
 import tarfile
+import time
 from pathlib import Path
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PREFIX = "market-data-1m-"
+DEFAULT_TAG = "market-data-1m-2026-11-15"
+DEFAULT_REPO = "CordiallyMel/SkyQ_RANGE"
+DEFAULT_ARCHIVE_DIR = "release-assets"
+SMALL_ASSETS = {"SHA256SUMS", "MANIFEST.csv", "RESTORE.md", "release.json"}
+SPACE_CUSHION = 512 * 1024 * 1024
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--archive-dir",
-        required=True,
-        help="directory containing *.part-*, SHA256SUMS and MANIFEST.csv",
+        default=None,
+        help=(
+            "directory containing *.part-*, SHA256SUMS and MANIFEST.csv "
+            f"(default with --download: {DEFAULT_ARCHIVE_DIR})"
+        ),
+    )
+    parser.add_argument(
+        "--download",
+        action="store_true",
+        help="download the release assets from GitHub before verifying/extracting",
+    )
+    parser.add_argument(
+        "--tag",
+        default=DEFAULT_TAG,
+        help=f"release tag to download (default: {DEFAULT_TAG})",
+    )
+    parser.add_argument(
+        "--repo",
+        default=DEFAULT_REPO,
+        help=f"GitHub repository to download from (default: {DEFAULT_REPO})",
     )
     parser.add_argument(
         "--dest",
@@ -78,6 +109,268 @@ def _read_sums(path: Path) -> dict[str, str]:
     return sums
 
 
+class DownloadError(RuntimeError):
+    """Raised when the optional release download cannot be completed safely."""
+
+
+def _gib(value: int) -> float:
+    return value / (1024**3)
+
+
+def _headers(token: str | None, accept: str = "application/octet-stream") -> dict[str, str]:
+    headers = {
+        "Accept": accept,
+        "User-Agent": "skyq-range-release-restore",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def _asset_sha(asset: dict[str, Any], name: str) -> str:
+    digest = str(asset.get("digest") or "")
+    if not digest.startswith("sha256:"):
+        raise DownloadError(f"GitHub did not report a SHA-256 digest for {name}")
+    return digest.split(":", 1)[1].lower()
+
+
+def _github_release(repo: str, tag: str, timeout: int = 120) -> dict[str, Any]:
+    token = os.environ.get("GITHUB_TOKEN") or None
+    request = Request(
+        f"https://api.github.com/repos/{repo}/releases/tags/{tag}",
+        headers=_headers(token, accept="application/vnd.github+json"),
+    )
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            release = json.load(response)
+    except HTTPError as exc:
+        raise DownloadError(f"GitHub API returned HTTP {exc.code} for {tag}") from exc
+    except (URLError, OSError) as exc:
+        raise DownloadError(f"could not reach GitHub API: {exc}") from exc
+    if release.get("tag_name") != tag:
+        raise DownloadError(
+            f"GitHub returned tag {release.get('tag_name')!r}, expected {tag!r}"
+        )
+    if release.get("draft") or not release.get("published_at"):
+        raise DownloadError(f"release {tag} is not published")
+    return release
+
+
+def _download_asset(
+    asset: dict[str, Any],
+    destination: Path,
+    expected_sha: str,
+    timeout: int = 120,
+    retries: int = 3,
+) -> Path:
+    name = str(asset.get("name") or destination.name)
+    if destination.is_file() and _sha256(destination) == expected_sha:
+        print(f"using verified {name}", flush=True)
+        return destination
+
+    url = str(asset.get("browser_download_url") or "")
+    if not url:
+        raise DownloadError(f"release asset {name} has no download URL")
+    token = os.environ.get("GITHUB_TOKEN") or None
+    size = asset.get("size")
+    size_text = f" ({_gib(size):.2f} GiB)" if isinstance(size, int) else ""
+    last_error: Exception | None = None
+
+    for attempt in range(1, retries + 1):
+        temporary = destination.with_name(destination.name + ".download")
+        temporary.unlink(missing_ok=True)
+        try:
+            print(f"downloading {name}{size_text} ...", flush=True)
+            request = Request(url, headers=_headers(token))
+            downloaded = 0
+            next_report = 256 * 1024**2
+            with urlopen(request, timeout=timeout) as response, temporary.open("wb") as handle:
+                while chunk := response.read(8 * 1024 * 1024):
+                    handle.write(chunk)
+                    downloaded += len(chunk)
+                    if downloaded >= next_report:
+                        print(f"  {name}: {_gib(downloaded):.2f} GiB", flush=True)
+                        next_report += 256 * 1024**2
+            actual = _sha256(temporary)
+            if actual != expected_sha:
+                raise DownloadError(
+                    f"checksum mismatch for {name}: expected {expected_sha}, got {actual}"
+                )
+            temporary.replace(destination)
+            return destination
+        except (HTTPError, URLError, OSError, DownloadError) as exc:
+            temporary.unlink(missing_ok=True)
+            last_error = exc
+            if attempt < retries:
+                print(f"retrying {name} ({attempt}/{retries}) ...", flush=True)
+                time.sleep(attempt * 3)
+    raise DownloadError(f"download failed for {name}: {last_error}")
+
+
+def _nearest_existing(path: Path) -> Path:
+    current = path.expanduser().resolve()
+    while not current.exists():
+        if current.parent == current:
+            break
+        current = current.parent
+    return current
+
+
+def _free_bytes(path: Path) -> int:
+    return shutil.disk_usage(_nearest_existing(path)).free
+
+
+def _same_filesystem(left: Path, right: Path) -> bool:
+    return _nearest_existing(left).stat().st_dev == _nearest_existing(right).stat().st_dev
+
+
+def _require_space(label: str, path: Path, needed: int) -> None:
+    if needed <= 0:
+        return
+    required = needed + SPACE_CUSHION
+    free = _free_bytes(path)
+    if free < required:
+        raise DownloadError(
+            f"not enough free space for {label} at {path}: "
+            f"need {_gib(required):.2f} GiB, have {_gib(free):.2f} GiB"
+        )
+
+
+def _validate_release_metadata(metadata: dict[str, Any], sums: dict[str, str], tag: str) -> None:
+    if metadata.get("schema") != 1 or metadata.get("tag") != tag:
+        raise DownloadError("release.json does not describe the requested tag")
+    archive = metadata.get("archive")
+    if archive != f"{tag}.tar" or sums.get(str(archive)) != metadata.get("archive_sha256"):
+        raise DownloadError("release.json archive checksum is inconsistent")
+    parts = metadata.get("parts")
+    if not isinstance(parts, list) or not parts:
+        raise DownloadError("release.json has no parts")
+    total = 0
+    for index, part in enumerate(parts, start=1):
+        if not isinstance(part, dict):
+            raise DownloadError(f"release.json part {index} is invalid")
+        name = part.get("name")
+        digest = part.get("sha256")
+        size = part.get("bytes")
+        if name != f"{tag}.tar.part-{index:03d}":
+            raise DownloadError(f"unexpected part name in release.json: {name!r}")
+        if not isinstance(size, int) or size <= 0 or not isinstance(digest, str):
+            raise DownloadError(f"invalid part metadata for {name}")
+        if sums.get(str(name)) != digest.lower():
+            raise DownloadError(f"SHA256SUMS disagrees with release.json for {name}")
+        total += size
+    if total != metadata.get("archive_bytes"):
+        raise DownloadError("release.json part sizes do not add up to archive_bytes")
+    if not isinstance(metadata.get("files"), int) or not isinstance(
+        metadata.get("uncompressed_bytes"), int
+    ):
+        raise DownloadError("release.json has invalid file/size totals")
+
+
+def _download_release(
+    archive_dir: Path,
+    destination: Path,
+    tag: str,
+    repo: str,
+    verify_only: bool,
+    timeout: int = 120,
+) -> None:
+    release = _github_release(repo, tag, timeout=timeout)
+    assets = {str(asset.get("name")): asset for asset in release.get("assets", [])}
+    required_small = {"SHA256SUMS"} | (SMALL_ASSETS & set(assets))
+    if "SHA256SUMS" not in assets:
+        raise DownloadError("release has no SHA256SUMS asset")
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    _require_space(
+        "release metadata download",
+        archive_dir,
+        sum(int(assets[name].get("size") or 0) for name in required_small),
+    )
+
+    sha_asset = assets["SHA256SUMS"]
+    _download_asset(sha_asset, archive_dir / "SHA256SUMS", _asset_sha(sha_asset, "SHA256SUMS"))
+    sums = _read_sums(archive_dir / "SHA256SUMS")
+
+    mirror_sums = ROOT / "data" / "releases" / f"{tag}.sha256"
+    if mirror_sums.is_file() and _read_sums(mirror_sums) != sums:
+        print(
+            f"warning: downloaded SHA256SUMS differs from {mirror_sums}; "
+            "using the release's own checksum file",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    release_asset = assets.get("release.json")
+    if release_asset is None:
+        raise DownloadError("release has no release.json asset")
+    _download_asset(
+        release_asset,
+        archive_dir / "release.json",
+        _asset_sha(release_asset, "release.json"),
+    )
+    try:
+        metadata = json.loads((archive_dir / "release.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise DownloadError(f"cannot read downloaded release.json: {exc}") from exc
+    _validate_release_metadata(metadata, sums, tag)
+
+    part_names = [part["name"] for part in metadata["parts"]]
+    sums_parts = {name for name in sums if ".part-" in name}
+    if set(part_names) != sums_parts:
+        raise DownloadError("release.json parts and SHA256SUMS parts differ")
+    for name in part_names:
+        asset = assets.get(name)
+        part = next(part for part in metadata["parts"] if part["name"] == name)
+        if asset is None:
+            raise DownloadError(f"release is missing part asset {name}")
+        if asset.get("size") != part["bytes"]:
+            raise DownloadError(f"asset size for {name} disagrees with release.json")
+
+    for name, expected_sha in (
+        ("MANIFEST.csv", sums.get("MANIFEST.csv")),
+        ("RESTORE.md", sums.get("RESTORE.md")),
+    ):
+        asset = assets.get(name)
+        if asset is None or expected_sha is None:
+            raise DownloadError(f"release is missing {name}")
+        _download_asset(asset, archive_dir / name, expected_sha)
+
+    if "catalog.json" in assets:
+        _download_asset(
+            assets["catalog.json"],
+            archive_dir / "catalog.json",
+            _asset_sha(assets["catalog.json"], "catalog.json"),
+        )
+
+    missing: list[tuple[str, int]] = []
+    for part in metadata["parts"]:
+        name = part["name"]
+        path = archive_dir / name
+        expected = part["sha256"]
+        if path.is_file() and _sha256(path) == expected:
+            print(f"using verified {name}", flush=True)
+        else:
+            missing.append((name, part["bytes"]))
+
+    archive_path = archive_dir / metadata["archive"]
+    archive_bytes = 0 if archive_path.is_file() or verify_only else int(metadata["archive_bytes"])
+    extract_bytes = 0 if verify_only else int(metadata["uncompressed_bytes"])
+    missing_bytes = sum(size for _, size in missing)
+    if _same_filesystem(archive_dir, destination):
+        _require_space(
+            "download and restoration",
+            archive_dir,
+            missing_bytes + archive_bytes + extract_bytes,
+        )
+    else:
+        _require_space("part download", archive_dir, missing_bytes + archive_bytes)
+        _require_space("archive extraction", destination, extract_bytes)
+
+    for name, _ in missing:
+        asset = assets[name]
+        _download_asset(asset, archive_dir / name, sums[name])
+
+
 def _safe_member(member: tarfile.TarInfo) -> None:
     name = Path(member.name)
     if name.is_absolute() or ".." in name.parts:
@@ -97,19 +390,36 @@ def _concatenate(parts: list[Path], destination: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
-    archive_dir = Path(args.archive_dir).expanduser().resolve()
+    parser = _parser()
+    args = parser.parse_args(argv)
+    if args.archive_dir:
+        archive_dir = Path(args.archive_dir).expanduser().resolve()
+    elif args.download:
+        archive_dir = Path(DEFAULT_ARCHIVE_DIR).expanduser().resolve()
+    else:
+        parser.error("--archive-dir is required unless --download is used")
+
+    destination = Path(args.dest).expanduser().resolve()
+    if args.download:
+        try:
+            _download_release(
+                archive_dir=archive_dir,
+                destination=destination,
+                tag=args.tag,
+                repo=args.repo,
+                verify_only=args.verify_only,
+            )
+        except (DownloadError, OSError) as exc:
+            print(f"download failed: {exc}", file=sys.stderr)
+            return 1
+
     sums_path = archive_dir / "SHA256SUMS"
     if not sums_path.is_file():
         print(f"missing {sums_path}", file=sys.stderr)
         return 2
     sums = _read_sums(sums_path)
 
-    part_names = sorted(
-        name
-        for name in sums
-        if name.startswith(DEFAULT_PREFIX) and ".part-" in name
-    )
+    part_names = sorted(name for name in sums if ".part-" in name)
     if not part_names:
         print("no split parts listed in SHA256SUMS", file=sys.stderr)
         return 2
@@ -133,10 +443,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.verify_only:
         return 0
 
-    full_name = next(
-        (name for name in sums if name.startswith(DEFAULT_PREFIX) and name.endswith(".tar")),
-        None,
-    )
+    full_name = next((name for name in sums if name.endswith(".tar")), None)
     if full_name is None:
         print("SHA256SUMS has no full tar entry", file=sys.stderr)
         return 2
@@ -154,7 +461,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  actual   {actual_full}", file=sys.stderr)
         return 1
 
-    destination = Path(args.dest).expanduser().resolve()
     destination.mkdir(parents=True, exist_ok=True)
     with tarfile.open(full_path, "r") as archive:
         members = archive.getmembers()

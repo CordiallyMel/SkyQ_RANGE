@@ -372,14 +372,17 @@ ORDER BY symbol, "window";
 
 ```bash
 pytest -q
+python -m scripts.audit_release
 python -m scripts.check_integrations
 cd dashboard && npm ci && npm run build
 ```
 
-The GitHub Actions workflow runs the Python test suite and the TypeScript build
-on every push and pull request. Tests use an isolated SQLite database and never
-need broker credentials. Optional live integrations are marked as such and are
-not exercised by CI.
+The GitHub Actions workflow runs the Python test suite, the published-release
+audit and the TypeScript build on every push and pull request. The release
+audit checks the live release's part digests and MANIFEST against
+`data/releases/`; it does not download the large parts. Tests use an isolated
+SQLite database and never need broker credentials. Optional live integrations
+are marked as such and are not exercised by CI.
 
 ## Regulation and risk notes (verified 2026-11-15)
 

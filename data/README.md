@@ -8,18 +8,20 @@ multi-gigabyte history would make a normal `git clone` unusable.
 ## Download the full 1-minute archive
 
 The one-minute archive is published as split GitHub release assets, not as a Git
-commit. Download the release, verify every part and restore it with:
+commit. Download, verify and restore it with one command:
 
 ```bash
-gh release download market-data-1m-2026-11-15 \
-  --repo CordiallyMel/SkyQ_RANGE --dir release-assets
 python -m scripts.restore_market_data \
-  --archive-dir release-assets --dest data/restored
+  --download --dest data/restored
 ```
 
-The verifier checks part SHA-256 values, checks the full tar checksum, and
-rejects unsafe paths before extracting. The complete inventory, sizes, exclusions
-and rebuild instructions are in [`../docs/DATA_RELEASE.md`](../docs/DATA_RELEASE.md).
+The helper downloads into `release-assets/`, checks free space, verifies every
+part SHA-256, checks the full tar checksum, and rejects unsafe paths before
+extracting. Set `GITHUB_TOKEN` to avoid anonymous API rate limits. Use
+`--verify-only` to download and check without extracting; use
+`--archive-dir release-assets` if you already downloaded the parts. The complete
+inventory, sizes, exclusions and rebuild instructions are in
+[`../docs/DATA_RELEASE.md`](../docs/DATA_RELEASE.md).
 The release includes canonical ETF bars, futures and 1m indicator bundles,
 Databento stock-scanner data, forex/crypto 1m context and option 1m data.
 
