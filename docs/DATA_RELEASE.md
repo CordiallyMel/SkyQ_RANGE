@@ -262,10 +262,14 @@ when the secret is absent the notification step skips cleanly. Keep the webhook
 URL in GitHub Secrets, not in the repository or workflow file.
 
 It checks the GitHub release against the committed metadata, verifies each
-part's GitHub SHA-256 digest and size, downloads `SHA256SUMS`, `release.json`,
-`MANIFEST.csv` and `RESTORE.md`, and validates the 12,269-row manifest and file
-counts. It deliberately does **not** download the 5.4 GB of parts on every CI
-run; GitHub's asset digest covers the uploaded bytes.
+part's GitHub SHA-256 digest and size, and requires `restore-summary.md`. It
+downloads `SHA256SUMS`, `release.json`, `MANIFEST.csv`, `RESTORE.md` and
+`restore-summary.md`, and validates the 12,269-row manifest and file counts.
+The audit also requires `RESTORE.md` to contain exactly one direct link matching
+the summary asset's download URL, and downloads that asset to verify its GitHub
+digest, so a missing or stale summary link fails the audit. It deliberately does
+**not** download the 5.4 GB of parts on every CI run; GitHub's asset digest
+covers the uploaded bytes.
 
 For a full local content audit, which downloads and hashes every part:
 
