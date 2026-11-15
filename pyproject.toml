@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "skyq-range"
+version = "1.0.0"
+description = "SkyQ RANGE: a causal 1-minute ETF channel-scalper research and execution system"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = { text = "MIT" }
+authors = [{ name = "SkyQ" }]
+keywords = ["quantitative-finance", "backtesting", "etf", "mean-reversion", "postgresql"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Financial and Insurance Industry",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = [
+  "fastapi>=0.115",
+  "ib_async==2.1.0",
+  "numpy==2.5.4",
+  "pandas==3.1.0",
+  "pyarrow==26.0.0",
+  "psycopg[binary]>=3.2",
+  "pydantic>=2.8",
+  "sqlalchemy>=2.0.36",
+  "tzdata==2025.3",
+  "uvicorn[standard]>=0.30",
+  "websockets>=17.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.27",
+  "pytest>=9.0",
+  "pytest-cov>=6.0",
+  "ruff>=0.8",
+]
+databento = ["databento>=0.45"]
+moomoo = ["futu-api>=10.0"]
+mt5 = ["MetaTrader5>=5.0.45; sys_platform == 'win32'"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["config", "integrations", "src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+  "integration: requires a local PostgreSQL, broker terminal, or network credentials",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [".venv", "dashboard/node_modules", "dashboard/dist"]

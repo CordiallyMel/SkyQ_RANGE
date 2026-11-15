@@ -1,0 +1,54 @@
+SkyQ RANGE: SPY 1m, preset=100t/0.20%, sides=both, qty=1000, zone=0.20, stop=100 ticks, tp=channel 0.2, cooldown=0, overlap=True, min_width=0, session=rth, atr_filter=False, entry=next_open, intrabar=signal
+C:\Users\mel12\Documents\Python Based ATS\GitHub\SkyQ_RANGE\src\backtest.py:315: UserWarning: Converting to PeriodArray/Index representation will drop timezone information.
+  frame["month"] = exits.dt.to_period("M").astype(str)
+
+=== SkyQ RANGE SPY SPDR S&P 500 ETF ===
+bars=4,415,353  2003-09-10 08:45 -> 2026-11-04 17:07
+trades=67,271  wins=54,207  losses=13,064  win_rate=80.58%  avg_bars=15.9  exposure=24.3%
+gross=+2,478,897.85  costs=-820,070.00  net=+1,658,827.85  expectancy=+24.66
+avg_win=+175.16  avg_loss=-599.83  rr=0.292  pf=1.212  max_dd=-95,845.60
+net/month=+5,971.47  trades/month=242.2  sharpe=2.53  sortino=5.08  positive_years=16/24  positive_months=186/279
+channels=110,048  avg_channel_width=0.98 pts  avg_risk=$1,230.25  trades/day=12.28
+gates: invalid_bracket=1  no_channel=614,112  no_touch=583,164  session=2,146,708
+
+BY SIDE
+ side  trades  wins  losses win_rate           net avg_win avg_loss   pf
+ LONG   33998 27780    6218   81.71% +1,005,350.17 +178.85  -637.34 1.25
+SHORT   33273 26427    6846   79.42%   +653,477.68 +171.29  -565.76 1.17
+
+BY YEAR
+ year  trades  wins  losses win_rate         net
+ 2003    1047   825     222   78.80%   -3,375.00
+ 2004    2782  2121     661   76.24%   -3,670.90
+ 2005    2630  2031     599   77.22%   +6,929.20
+ 2006    2272  1791     481   78.83%  +22,340.10
+ 2007    2831  2309     522   81.56%  +16,004.70
+ 2008    4472  3732     740   83.45%  -36,713.40
+ 2009    4475  3744     731   83.66%   -5,219.50
+ 2010    3467  2838     629   81.86%   -6,018.30
+ 2011    3502  2849     653   81.35%  -11,437.30
+ 2012    2381  1863     518   78.24%  -24,503.50
+ 2013    1984  1466     518   73.89%  +11,197.80
+ 2014    1932  1493     439   77.28%   -7,506.70
+ 2015    2679  2172     507   81.08%  +30,826.00
+ 2016    2336  1873     463   80.18%  +37,999.90
+ 2017    1165   828     337   71.07%  +28,805.00
+ 2018    2890  2365     525   81.83%  +20,931.00
+ 2019    1997  1606     391   80.42%  +58,500.40
+ 2020    3929  3234     695   82.31%  +90,908.75
+ 2021    2415  1894     521   78.43%  +86,105.20
+ 2022    4622  3815     807   82.54% +178,338.69
+ 2023    2946  2392     554   81.19% +111,874.50
+ 2024    2368  1880     488   79.39% +144,613.34
+ 2025    3479  2866     613   82.38% +493,777.80
+ 2026    2670  2220     450   83.15% +418,120.07
+
+LAST 5 TRADES
+ side                  bar_time                entry_time  entry_price  stop_price  target_price                 exit_time  exit_price exit_reason  net_pnl  bars_held  channel_width
+ LONG 2026-11-04 14:51:00-05:00 2026-11-04 14:52:00-05:00       767.55      766.06        767.94 2026-11-04 15:22:00-05:00      767.94      TARGET    380.0         30         1.9664
+SHORT 2026-11-04 15:35:00-05:00 2026-11-04 15:36:00-05:00       768.36      770.03        767.97 2026-11-04 15:38:00-05:00      767.97      TARGET    380.0          2         1.9664
+ LONG 2026-11-04 15:39:00-05:00 2026-11-04 15:40:00-05:00       767.48      766.06        767.87 2026-11-04 15:41:00-05:00      767.87      TARGET    380.0          1         1.9664
+ LONG 2026-11-04 15:40:00-05:00 2026-11-04 15:41:00-05:00       767.53      766.06        767.92 2026-11-04 15:43:00-05:00      767.92      TARGET    380.0          2         1.9664
+ LONG 2026-11-04 15:42:00-05:00 2026-11-04 15:43:00-05:00       767.53      766.06        767.92 2026-11-04 15:56:00-05:00      766.06        STOP  -1490.0         13         1.9664
+
+wrote 67,271 trades to reports\backtests\.merged-spy-trades.csv
