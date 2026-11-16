@@ -60,9 +60,13 @@ The channel uses a 100-bar normalized close, a 14-bar standard deviation, a
 | Expectancy per trade | +$24.66 | +$14.97 |
 | Average win / loss | +$175.16 / -$599.83 | +$194.35 / -$535.90 |
 | Reward / risk | 0.292 | 0.363 |
+| Break-even win rate | 77.4% | 73.4% |
+| Win-rate cushion | +3.2 pts | +2.1 pts |
 | Profit factor | **1.212** | **1.114** |
 | Max closed-trade drawdown | **-$95,845.60** | **-$286,631.20** |
 | Sharpe (daily) | 2.53 | 0.92 |
+| Sortino (daily) | **5.08** | **1.69** |
+| Average planned risk | $1,230.25 | $1,723.91 |
 | Positive years | **16 / 24** | **8 / 24** |
 | Positive months | 186 / 279 | 106 / 279 |
 | Net / month (canonical active-month) | +$5,971.47 | +$1,743.91 |

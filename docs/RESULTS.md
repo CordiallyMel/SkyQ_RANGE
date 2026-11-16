@@ -21,6 +21,28 @@ The 2007–2026 window is the common 20-year start. QQQ is better in that window
 than in the 2003 window, but it remains the weaker book: lower profit factor,
 lower positive-year rate and a much larger drawdown relative to its net.
 
+## MAD Edge risk and consistency metrics
+
+| Metric | SPY | QQQ |
+|---|---:|---:|
+| Win rate | 80.58% | 75.44% |
+| Reward/risk | 0.292 | 0.363 |
+| Break-even win rate | 77.4% | 73.4% |
+| Win-rate cushion | +3.2 pts | +2.1 pts |
+| Profit factor | 1.212 | 1.114 |
+| Sharpe (daily, annualized) | 2.53 | 0.92 |
+| Sortino (daily, annualized) | 5.08 | 1.69 |
+| Average planned risk | $1,230.25 | $1,723.91 |
+| Max closed-trade drawdown | $95,845.60 | $286,631.20 |
+| Positive months | 186 / 279 | 106 / 279 |
+| Positive years | 16 / 24 | 8 / 24 |
+| Exposure | 24.3% | 20.2% |
+| Net / month (canonical active-month) | +$5,971.47 | +$1,743.91 |
+
+Sortino is from the canonical report (`reports/backtests/*.txt`), not a new
+calculation. Break-even is `1 / (1 + reward/risk)`. These figures describe the
+same closed-trade, fixed-1,000-share study as the headline table.
+
 ## Equity
 
 ![SPY and QQQ fixed-size equity](assets/equity_curve.svg)

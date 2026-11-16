@@ -1,0 +1,3 @@
+window,symbol,trades,win_rate,reward_risk,breakeven_win_rate,win_rate_cushion_pct,pf,sharpe_d,sortino_d,avg_risk,max_dd,positive_months,months,positive_years,years,exposure_pct,net_per_month
+2003-2026,SPY,67271,0.8058,0.292,0.7740,3.18,1.212,2.53,5.08,1230.25,95845.60,186,279,16,24,24.3,5971.47
+2003-2026,QQQ,32356,0.7544,0.363,0.7337,2.07,1.114,0.92,1.69,1723.91,286631.20,106,279,8,24,20.2,1743.91

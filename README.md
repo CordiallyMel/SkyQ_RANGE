@@ -41,6 +41,35 @@ QQQ is supported by the same engine but is the lower-quality book: profit factor
 presented as equal to SPY. The `2007-2026` window is also available in the
 dashboard and database for a common-start comparison.
 
+## MAD Edge risk and consistency metrics
+
+The headline table is about dollars. This one is about whether the win rate is
+actually clearing its payoff hurdle. Sharpe and Sortino are **daily** and come
+directly from the canonical reports; the break-even rate is
+`1 / (1 + reward/risk)`.
+
+| Metric | SPY | QQQ |
+|---|---:|---:|
+| Win rate | 80.58% | 75.44% |
+| Reward/risk (avg win ÷ avg loss) | 0.292 | 0.363 |
+| Break-even win rate | **77.4%** | **73.4%** |
+| Win-rate cushion above break-even | +3.2 pts | +2.1 pts |
+| Profit factor | 1.212 | 1.114 |
+| Sharpe (daily, annualized) | **2.53** | **0.92** |
+| Sortino (daily, annualized) | **5.08** | **1.69** |
+| Average planned risk | $1,230.25 | $1,723.91 |
+| Max closed-trade drawdown | $95,845.60 | $286,631.20 |
+| Positive months | 186 / 279 | 106 / 279 |
+| Positive years | 16 / 24 | 8 / 24 |
+| Exposure | 24.3% | 20.2% |
+| Net / month (canonical active-month) | +$5,971.47 | +$1,743.91 |
+
+SPY's high win rate is real, but the cushion is only 3.2 points because the
+average loss is 3.4× the average win. QQQ's cushion is 2.1 points. A short cluster
+of stop-outs is the risk the win rate hides. The same values are in
+[`data/published/mad_edge_metrics.csv`](data/published/mad_edge_metrics.csv) and
+[`docs/RESULTS.md`](docs/RESULTS.md).
+
 ## Control center
 
 The public dashboard is a read-only view of the PostgreSQL reporting model. It
