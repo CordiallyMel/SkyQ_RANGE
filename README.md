@@ -12,6 +12,7 @@ where it works, where it fails, and what is not wired for live trading.
 [![License: MIT](https://img.shields.io/badge/license-MIT-5eead4.svg)](LICENSE)
 [![Dashboard](https://img.shields.io/badge/dashboard-React%20%2B%20TypeScript-60a5fa.svg)](dashboard)
 [![Data](https://img.shields.io/badge/research-PostgreSQL%20%2B%20SQL-336791?logo=postgresql&logoColor=white)](sql)
+[![CI](https://github.com/CordiallyMel/SkyQ_RANGE/actions/workflows/ci.yml/badge.svg)](https://github.com/CordiallyMel/SkyQ_RANGE/actions/workflows/ci.yml)
 
 ![SkyQ RANGE fixed-size equity curves](docs/assets/equity_curve.svg)
 
@@ -39,6 +40,24 @@ QQQ is supported by the same engine but is the lower-quality book: profit factor
 1.114, a 28.7% peak-to-trough drawdown and only 8 of 24 positive years. It is not
 presented as equal to SPY. The `2007-2026` window is also available in the
 dashboard and database for a common-start comparison.
+
+## Control center
+
+The public dashboard is a read-only view of the PostgreSQL reporting model. It
+is desktop-first and deliberately shows the costs, rejected futures and paper-only
+execution boundary next to the equity curve.
+
+![SkyQ RANGE dashboard overview](docs/assets/screenshots/dashboard-overview.png)
+
+| Trade tape | Futures rejection |
+| --- | --- |
+| ![SkyQ RANGE trade tape](docs/assets/screenshots/trade-ledger.png) | ![SkyQ RANGE futures rejection table](docs/assets/screenshots/futures-rejection.png) |
+
+![Python tests and CI](docs/assets/screenshots/tests-ci-card.png)
+
+The core suite has **54 tests** and runs with `pytest -q` in CI, alongside a
+release audit and the dashboard build. The CI card uses the actual `Python
+tests` job log from run #25.
 
 ## Attribution and sensitivity
 
